@@ -1,8 +1,8 @@
 # 一、个人偏好与自定规则（自己维护）
 
 <!-- 本部分：用户自己写的，改这里不影响下面两部分 -->
-<!-- 本文件被多家工具共用（Claude Code / codex / opencode / Cursor 等），挂载方式见 `CLAUDE.md.changelog.md`；
-     所以正文一律不写工具专有的路径、命令或功能名，凡涉及工具能力的地方都写成"如果你的工具支持"。 -->
+<!-- 本文件被多家工具共用（Claude Code / Codex / OpenCode / Cursor 等）；不同工具的接入与挂载方式见 `README.md`。
+     正文不写工具专有的路径、命令或功能名，凡涉及工具能力的地方都写成"如果你的工具支持"。 -->
 
 ## 个人偏好（最高优先级）
 
@@ -31,9 +31,8 @@
 # 二、通用行为准则（Karpathy CLAUDE.md 中译）
 
 <!--
-  来源：https://raw.githubusercontent.com/forrestchang/andrej-karpathy-skills/main/CLAUDE.md
-  英文原文快照：`CLAUDE.karpathy-upstream.md`（2026-08-02 同步）
-  本部分是原文的逐句中译，不加私货；上游更新时先 diff 快照再同步译文。
+  上游来源：https://raw.githubusercontent.com/forrestchang/andrej-karpathy-skills/main/CLAUDE.md
+  本部分是原文的逐句中译，不加私货；上游更新时先 diff 再同步译文。
 -->
 
 降低常见 LLM 编码错误的行为准则。与项目特定指令按需合并。
@@ -102,7 +101,7 @@
 
 # 三、工程纪律（提炼自 superpowers 6.2.0，脱插件版）
 
-<!-- 变更史与来源对照：`CLAUDE.md.changelog.md`。各节标注来源 skill，便于对照原文增删。 -->
+<!-- 本部分提炼自 superpowers 6.2.0；各节标注来源 skill，便于对照原文增删。 -->
 
 第二部分管"动手前"和"定目标"，本部分补齐分档、测试、调试、验证、反馈、文档、执行收尾。
 
