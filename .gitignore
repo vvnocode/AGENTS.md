@@ -1,0 +1,36 @@
+# macOS 和常见编辑器生成的本地文件
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# 仓库内临时 Git worktree
+.worktrees/
+
+# 本地工具状态与个人覆盖配置
+.claude/
+CLAUDE.local.md
+CLAUDE.private.md
+*.local.md
+*.private.md
+
+# 环境变量和凭据文件；示例文件允许提交
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+*.p12
+*.pfx
+credentials*.json
+secrets*.json
+
+# 临时文件、日志和构建产物
+*.log
+tmp/
+temp/
+dist/
+build/
