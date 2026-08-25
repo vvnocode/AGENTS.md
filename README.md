@@ -140,21 +140,16 @@ ln -s "$RULES_FILE" "$PROJECT_ROOT/GEMINI.md"  # Gemini CLI
 
 ## 更新规则
 
-符号链接安装只需更新仓库，所有挂载入口会立即读取新内容：
+符号链接安装只需更新仓库，所有挂载入口会随后读取新内容。先获取并审查变更，再快进更新：
 
 ```bash
-# 仅接受快进更新，避免在安装目录中意外产生合并提交。
-RULES_HOME="${XDG_CONFIG_HOME:-$HOME/.config}/vibe-coding-rules"
-git -C "$RULES_HOME" pull --ff-only
-```
-
-更新全局规则前建议先查看变更：
-
-```bash
-# 获取远端后审查当前版本与远端默认分支之间的差异。
+# 获取远端但不修改当前规则，随后审查默认分支的相关变更。
 RULES_HOME="${XDG_CONFIG_HOME:-$HOME/.config}/vibe-coding-rules"
 git -C "$RULES_HOME" fetch origin
 git -C "$RULES_HOME" diff HEAD..origin/main -- CLAUDE.md README.md
+
+# 确认 diff 后仅接受快进更新，避免产生意外合并提交。
+git -C "$RULES_HOME" merge --ff-only origin/main
 ```
 
 全局规则会影响多个项目。不要在未审查 diff 的情况下自动定时更新。
@@ -205,7 +200,8 @@ git -C "$RULES_HOME" diff HEAD..origin/main -- CLAUDE.md README.md
 
 ## 来源与致谢
 
-本项目的通用行为准则翻译自 Andrej Karpathy 风格的工程提示词整理，上游来源见 [`CLAUDE.md`](./CLAUDE.md) 中的链接；工程纪律参考 [obra/superpowers](https://github.com/obra/superpowers) 的方法，并针对不依赖插件的使用方式进行了整理。
+- 通用行为准则：逐句中译自 [multica-ai/andrej-karpathy-skills](https://github.com/multica-ai/andrej-karpathy-skills) 的 `CLAUDE.md`。
+- 工程纪律：提炼自 [obra/superpowers](https://github.com/obra/superpowers) v6.3.0。本文件始终加载，只保留始终有效的纪律，不照搬插件按需加载时的完整仪式。
 
 这些来源提供方法论基础，本仓库负责跨工具适配、中文维护和公开版本的隐私处理。
 
@@ -213,6 +209,6 @@ git -C "$RULES_HOME" diff HEAD..origin/main -- CLAUDE.md README.md
 
 除另有说明及明确标注来源的第三方材料外，本仓库中项目贡献者拥有权利的原创内容采用 [CC0 1.0 Universal](./LICENSE)：任何人均可复制、修改、组合和再发布，也可用于商业用途，不要求署名。
 
-`CLAUDE.md` 中明确注明上游来源的翻译、改编内容，以及链接指向的第三方材料，不会因为本项目采用 CC0 而被重新授权；这些内容仍受其各自权利状态和适用条款约束。CC0 只能放弃或许可贡献者实际拥有的权利。
+本 README 中明确注明上游来源的翻译、改编内容，以及链接指向的第三方材料，不会因为本项目采用 CC0 而被重新授权；这些内容仍受其各自权利状态和适用条款约束。CC0 只能放弃或许可贡献者实际拥有的权利。
 
 新增 `LICENSE` 不需要重写 Git 历史。它表示项目维护者从包含该文件的版本开始，对其有权处分的现有及后续原创贡献适用 CC0。
