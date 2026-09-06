@@ -34,16 +34,18 @@
 
 下表列出已核对官方规则机制的工具。工具版本会持续变化，实际加载顺序应以对应官方文档为准。
 
-| 工具 | 用户级入口 | 项目级入口 | 官方说明 |
-|---|---|---|---|
-| Claude Code | `~/.claude/CLAUDE.md` | `./CLAUDE.md` | [Memory](https://code.claude.com/docs/en/memory) |
-| Codex | `~/.codex/AGENTS.md` | `./AGENTS.md` | [Codex manual](https://developers.openai.com/codex/codex-manual.md) |
-| Gemini CLI | `~/.gemini/GEMINI.md` | `./GEMINI.md` | [Provide context with GEMINI.md](https://geminicli.com/docs/cli/gemini-md/) |
-| OpenCode | `~/.config/opencode/AGENTS.md` | `./AGENTS.md` | [Rules](https://opencode.ai/docs/en/rules/) |
-| DeepSeek Harness | `$DSH_HOME/AGENTS.md`，默认 `~/.dsh/AGENTS.md` | `./AGENTS.md` 或 `./CLAUDE.md` | [Agent instructions](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/context/agent-instructions/README.md) |
-| Cursor | 设置中的 User Rules | `./AGENTS.md` 或 `.cursor/rules/` | [Rules](https://cursor.com/docs/rules) |
+| 工具 | 用户级入口 | 项目级入口 | 全局 Skill 发现根 | 官方说明 |
+|---|---|---|---|---|
+| Claude Code | `~/.claude/CLAUDE.md` | `./CLAUDE.md` | `~/.claude/skills/` | [Memory](https://code.claude.com/docs/en/memory) |
+| Codex | `~/.codex/AGENTS.md` | `./AGENTS.md` | `~/.codex/skills/` | [Codex manual](https://developers.openai.com/codex/codex-manual.md) |
+| Gemini CLI | `~/.gemini/GEMINI.md` | `./GEMINI.md` | 待核验 | [Provide context with GEMINI.md](https://geminicli.com/docs/cli/gemini-md/) |
+| OpenCode | `~/.config/opencode/AGENTS.md` | `./AGENTS.md` | `~/.config/opencode/skills/`，也扫 `~/.claude/skills/` 与 `~/.agents/skills/` | [Rules](https://opencode.ai/docs/en/rules/) |
+| DeepSeek Harness | `$DSH_HOME/AGENTS.md`，默认 `~/.dsh/AGENTS.md` | `./AGENTS.md` 或 `./CLAUDE.md` | `~/.agents/skills/` | [Agent instructions](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/context/agent-instructions/README.md) |
+| Cursor | 设置中的 User Rules | `./AGENTS.md` 或 `.cursor/rules/` | 待核验 | [Rules](https://cursor.com/docs/rules) |
 
 “支持”表示目标工具能够读取对应入口中的 Markdown 规则，不表示不同工具会以完全相同的优先级、上下文预算或合并算法处理它。项目规则、目录级规则和组织托管规则可能覆盖本文件。
+
+「全局 Skill 发现根」列供 Skill 分发仓（如 [vvnocode/skills](https://github.com/vvnocode/skills)）挂载时参考：`~/.agents/skills/` 是跨工具约定俗成的 canonical 根，Cline、Dexto、Kimi、Warp、Zed 等只读它；Claude Code 与 Codex 不扫它、只认自己的目录。把一个 skill 软链到 `~/.agents/skills/`、`~/.claude/skills/`、`~/.codex/skills/` 三处即可覆盖上表已核验的工具。标「待核验」的格子尚未按实物核对，不要凭印象填写。本表是这三类路径的唯一正本，其他仓库只链接、不另维护。
 
 ## 快速开始
 
