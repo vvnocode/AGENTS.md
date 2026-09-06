@@ -140,6 +140,8 @@ ln -s "$RULES_FILE" "$PROJECT_ROOT/GEMINI.md"  # Gemini CLI
 
 如果项目已有规则文件，更稳妥的方式是摘取本仓库中的通用章节，或在工具支持导入语法时显式引用，而不是替换整个文件。
 
+记忆与指令是两回事：规则文件只约束「仓内 `.memory/` 存在时怎么读写」，不负责搭建。让 Claude Code、Codex、dsh、OpenCode 在同一仓库共用一份 `AGENTS.md` 与一份仓内记忆的接法（软链、`autoMemoryDirectory`、关闭 Codex 自带记忆、信任门禁），见 [vvnocode/skills](https://github.com/vvnocode/skills) 里的 `agent-memory-setup`，附一键脚本。
+
 ## 更新规则
 
 符号链接安装只需更新仓库，所有挂载入口会随后读取新内容。先获取并审查变更，再快进更新：
