@@ -21,6 +21,16 @@
 - 短期分支合入并验证后，默认删除对应本地 worktree 和本地分支；长期分支、未完全合入或用户要求保留时除外。先删 worktree，再安全删除分支；远端按平台规则或用户确认处理。
 - 合入后先同步主干再开新工作，不要在旧 sha 上继续叠加。远端平台（GitLab/GitHub）合入常重写提交 sha，本地不同步会重复携带已合入改动。
 
+## 项目记忆（Project Memory）
+
+**仓内 `.memory/` 存在即为该项目唯一的跨会话记忆，所有工具共用。**
+
+- 仅在 Git 仓库中应用本节。仓根存在 `.memory/` 时，会话开始先读 `.memory/MEMORY.md` 索引，命中再读对应条目；跨会话记忆只写这里，不写工具自带的仓外记忆。
+- 只记换个会话仍有用、且代码与 Git 历史读不出来的事：用户偏好、纠正过的做法、外部资源指针、非显然约束。不记代码结构、已修的 bug、本次会话的临时结论。
+- 一条记忆一个 `.md`：frontmatter 含 `name`、`description`、`metadata.type`（`user` | `feedback` | `project` | `reference`）；正文一个事实，`feedback` / `project` 类附 **Why** 与 **How to apply**。索引 `MEMORY.md` 每条一行 `- [标题](文件.md) — 摘要`，不放正文。
+- 写入前先查已有条目：已覆盖就更新，不新建重复；发现错误的记忆直接删除。
+- 仓内没有 `.memory/` 时不自行创建；搭建与各工具接法见 skill `agent-memory-setup`。
+
 ---
 
 # 二、通用行为准则
