@@ -1,12 +1,12 @@
-# CLAUDE.md：跨工具 AI 编程协作规范
+# AGENTS.md：跨工具 AI 编程协作规范
 
 一份可移植、可审查、可版本控制的 AI 编程协作规范。以单一 Markdown 文件为规则源，通过符号链接或项目级入口复用于 Claude Code、Codex、Gemini CLI、OpenCode、Cursor、DeepSeek Harness 等工具。
 
-[快速开始](#快速开始) · [支持矩阵](#支持矩阵) · [项目级接入](#项目级接入) · [更新](#更新规则) · [参与贡献](#参与贡献) · [许可](#许可)
+[快速开始](#快速开始) · [支持矩阵](#支持矩阵) · [三件套](#三件套) · [项目级接入](#项目级接入) · [更新](#更新规则) · [参与贡献](#参与贡献) · [许可](#许可)
 
 ## 项目定位
 
-不同 AI 编程工具使用不同的规则文件名和加载位置，但规则内容往往高度重合。本项目将通用协作规范集中维护在 [`CLAUDE.md`](./CLAUDE.md) 中，再按各工具约定的文件名进行挂载，从而解决以下问题：
+不同 AI 编程工具使用不同的规则文件名和加载位置，但规则内容往往高度重合。本项目将通用协作规范集中维护在 [`AGENTS.md`](./AGENTS.md) 中，再按各工具约定的文件名进行挂载，从而解决以下问题：
 
 - **单一规则源**：只维护一份正文，避免多个工具配置逐渐分叉。
 - **跨工具复用**：同一套工程纪律可以映射到不同工具的用户级或项目级入口。
@@ -14,11 +14,13 @@
 - **隐私可控**：仓库版本不包含个人路径、所在地、凭据或内部地址。
 - **按项目覆盖**：通用规则作为默认值，具体项目仍可提供更精确的本地约束。
 
+正文文件名取跨工具约定的 `AGENTS.md`（Codex、OpenCode、Cursor、DeepSeek Harness 都读它），而不是某一家的 `CLAUDE.md`；Claude Code 通过软链到 `~/.claude/CLAUDE.md` 读同一份。仓库 2026-09-08 由 `vvnocode/claude.md` 改名而来。
+
 这不是提示词合集，也不绑定某个模型。它关注的是长期稳定的工程行为：先理解再修改、控制变更范围、用证据验证结果、明确分支与交付流程。
 
 ## 规则结构
 
-[`CLAUDE.md`](./CLAUDE.md) 分为三个层次：
+[`AGENTS.md`](./AGENTS.md) 分为三个层次：
 
 | 部分 | 内容 | 维护方式 |
 |---|---|---|
@@ -49,70 +51,49 @@
 
 ## 快速开始
 
-### macOS / Linux
+一条命令把仓库 clone 到 `~/.vvnocode/rules`，并把 `AGENTS.md` 软链到各工具的用户级规则入口（Claude Code、Codex、Gemini CLI、OpenCode、DeepSeek Harness）。幂等：重跑即更新，已存在的目标只告警不覆盖。
 
-以下方式把仓库安装到用户配置目录，并为支持文件型全局规则的工具创建符号链接。命令不会覆盖已有目标文件；如果目标已经存在，请先阅读并手动合并原有规则。
+**macOS / Linux**：
 
 ```bash
-# 将规则仓库安装到稳定路径，后续更新不会改变符号链接目标。
-RULES_HOME="${XDG_CONFIG_HOME:-$HOME/.config}/vibe-coding-rules"
-git clone https://github.com/vvnocode/claude.md.git "$RULES_HOME"
-RULES_FILE="$RULES_HOME/CLAUDE.md"
-
-# 创建各工具需要的用户级配置目录。
-DSH_HOME_RESOLVED="${DSH_HOME:-$HOME/.dsh}"
-mkdir -p \
-  "$HOME/.claude" \
-  "$HOME/.codex" \
-  "$HOME/.gemini" \
-  "${XDG_CONFIG_HOME:-$HOME/.config}/opencode" \
-  "$DSH_HOME_RESOLVED"
-
-# 同一规则源按各工具约定的文件名挂载。
-ln -s "$RULES_FILE" "$HOME/.claude/CLAUDE.md"
-ln -s "$RULES_FILE" "$HOME/.codex/AGENTS.md"
-ln -s "$RULES_FILE" "$HOME/.gemini/GEMINI.md"
-ln -s "$RULES_FILE" "${XDG_CONFIG_HOME:-$HOME/.config}/opencode/AGENTS.md"
-ln -s "$RULES_FILE" "$DSH_HOME_RESOLVED/AGENTS.md"
+curl -fsSL https://raw.githubusercontent.com/vvnocode/AGENTS.md/main/install.sh | bash
 ```
+
+**Windows**（系统自带的 Windows PowerShell 5.1 即可）：
+
+```powershell
+irm https://raw.githubusercontent.com/vvnocode/AGENTS.md/main/install.ps1 | iex
+```
+
+Windows 建文件软链需要开发者模式或管理员权限；没有时脚本改为复制文件并在末尾打上标记，之后每次重跑安装会刷新这些副本。旧 Windows 上 `irm` 报「基础连接已经关闭」时，先执行 `[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor 3072` 打开 TLS 1.2。
+
+脚本行为：
+
+- 托管 clone 在 `~/.vvnocode/rules`（Windows `%USERPROFILE%\.vvnocode\rules`）；环境变量 `RULES_REPO_DIR` 改位置，`RULES_REPO_URL` 改为 fork。按早期 README 装在 `~/.config/vibe-coding-rules` 的，重跑安装会自动搬过来并重指链接。
+- 入口已是你自己的规则文件，或指向别处的链接：只告警不动。先把自己的规则并入，再手动换成链接。
+- 在本仓 clone 内运行 `./install.sh`（Windows `powershell -ExecutionPolicy Bypass -File .\install.ps1`）：软链直接指向该 clone，不联网、不建托管副本，开发用。
+- 卸载：删掉各入口的软链，再删 `~/.vvnocode/rules`。
+- 脚本纯 ASCII、提示为英文：Windows PowerShell 5.1 的 `irm` 不去 BOM，`-File` 又按本地代码页解码，两条路径同时成立只有纯 ASCII 一种写法。
 
 Cursor 的全局 User Rules 通过设置界面维护，不是稳定的文件挂载入口。需要全局使用时，可将规则正文加入 Cursor User Rules；需要跟随项目版本控制时，使用下方的项目级接入方式。
 
-### Windows PowerShell
+## 三件套
 
-Windows 创建符号链接通常需要启用开发者模式或使用具备相应权限的终端。以下命令同样不会覆盖已有目标文件。
+本仓是 vvnocode 三件套之一。三者各管一层、互相独立、安装顺序随意，缺任何一个另外两个照常工作：
 
-```powershell
-# 将仓库克隆到当前用户的稳定配置目录。
-$RulesHome = Join-Path $HOME ".config\vibe-coding-rules"
-git clone https://github.com/vvnocode/claude.md.git $RulesHome
-$RulesFile = Join-Path $RulesHome "CLAUDE.md"
+| 仓库 | 管什么 | 装到哪 | 缺了会怎样 |
+|---|---|---|---|
+| [AGENTS.md](https://github.com/vvnocode/AGENTS.md)（本仓） | 跨工具全局规则，含「项目记忆」读写规则与 llm-wiki 路由段 | `~/.vvnocode/rules`，软链到各工具的用户级规则入口 | 记忆读写规则没人下发：接线时用 `setup.sh --with-rule` 写进仓内 `AGENTS.md`；llm-wiki 路由段手工粘贴 |
+| [skills](https://github.com/vvnocode/skills) | 可公开分发的 skill，含给任意仓库接线的 `agent-memory-setup` | `~/.vvnocode/skills`，软链到三处全局 Skill 发现根 | 仓库不接线，偏好走各工具自带记忆；llm-wiki 的 bootstrap 会自动补装 |
+| [llm-wiki](https://github.com/vvnocode/llm-wiki) | 个人知识工作台：跨项目的机制、决策、案例 | 目录自选，`~/.llm-wiki` 软链指过去。它是数据仓、可一机多实例，不进 `~/.vvnocode` | 规则里的「全局知识工作台」整段失效，不查不写 |
 
-# DeepSeek Harness 可通过 DSH_HOME 改写全局配置目录，未设置时使用 ~/.dsh。
-$DshHome = if ([string]::IsNullOrWhiteSpace($env:DSH_HOME)) {
-    Join-Path $HOME ".dsh"
-} else {
-    $env:DSH_HOME
-}
+运行时只有两处条件门把三者接起来：仓内有 `.memory/` 才读写记忆，本机有 `~/.llm-wiki` 才查写 wiki。装 skills 仓一行命令：
 
-# 定义支持文件型全局规则的工具入口。
-$Targets = @(
-    (Join-Path $HOME ".claude\CLAUDE.md"),
-    (Join-Path $HOME ".codex\AGENTS.md"),
-    (Join-Path $HOME ".gemini\GEMINI.md"),
-    (Join-Path $HOME ".config\opencode\AGENTS.md"),
-    (Join-Path $DshHome "AGENTS.md")
-)
-
-# 逐项创建父目录和符号链接；目标已存在时命令会报错并保留原文件。
-foreach ($Target in $Targets) {
-    $TargetDirectory = Split-Path $Target -Parent
-    New-Item -ItemType Directory -Force -Path $TargetDirectory | Out-Null
-    New-Item -ItemType SymbolicLink -Path $Target -Target $RulesFile | Out-Null
-}
+```bash
+curl -fsSL https://raw.githubusercontent.com/vvnocode/skills/main/install.sh | bash
 ```
 
-如果环境不允许创建符号链接，可以复制文件到目标位置，但复制方式不会自动获得后续更新。
+llm-wiki 按其 README 或 `SETUP-FOR-AI.md` 部署。
 
 ## 项目级接入
 
@@ -122,7 +103,7 @@ foreach ($Target in $Targets) {
 
 ```bash
 # 先设置本仓库中规则源的绝对路径。
-RULES_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/vibe-coding-rules/CLAUDE.md"
+RULES_FILE="$HOME/.vvnocode/rules/AGENTS.md"
 PROJECT_ROOT="/path/to/project"
 
 # 只创建本机实际使用的入口，不覆盖已有项目规则，也不要提交这些绝对路径链接。
@@ -146,15 +127,12 @@ ln -s "$RULES_FILE" "$PROJECT_ROOT/GEMINI.md"  # Gemini CLI
 
 ## 更新规则
 
-符号链接安装只需更新仓库，所有挂载入口会随后读取新内容。先获取并审查变更，再快进更新：
+重跑安装命令即可：托管副本快进更新，所有挂载入口随后读取新内容。想先审查再更新：
 
 ```bash
-# 获取远端但不修改当前规则，随后审查默认分支的相关变更。
-RULES_HOME="${XDG_CONFIG_HOME:-$HOME/.config}/vibe-coding-rules"
+RULES_HOME="$HOME/.vvnocode/rules"
 git -C "$RULES_HOME" fetch origin
-git -C "$RULES_HOME" diff HEAD..origin/main -- CLAUDE.md README.md
-
-# 确认 diff 后仅接受快进更新，避免产生意外合并提交。
+git -C "$RULES_HOME" diff HEAD..origin/main -- AGENTS.md README.md
 git -C "$RULES_HOME" merge --ff-only origin/main
 ```
 
@@ -177,9 +155,12 @@ git -C "$RULES_HOME" merge --ff-only origin/main
 ```text
 .
 ├── .gitignore   # 本地配置、凭据和临时文件的忽略规则
-├── CLAUDE.md    # 跨工具复用的唯一规则源
+├── AGENTS.md    # 跨工具复用的唯一规则源
+├── install.sh   # 一键安装（macOS / Linux）：clone 到 ~/.vvnocode/rules 并软链各入口
+├── install.ps1  # 一键安装（Windows），纯 ASCII
 ├── LICENSE      # CC0 1.0 Universal 完整法律文本
-└── README.md    # 安装、兼容性、维护和贡献说明
+├── README.md    # 安装、兼容性、维护和贡献说明
+└── tests/       # 两个安装脚本的离线契约测试：python3 -m unittest discover -s tests
 ```
 
 无需额外维护 changelog 文档。历史变更由 Git 提交记录保存；长期有效的安装方式和兼容性结论维护在本 README 中。
