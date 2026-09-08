@@ -51,6 +51,22 @@ powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\.agents\skills\agent-
 
 两个脚本写入仓库的文件逐字节一致；脚本提示为英文（原因见根 README 的 Windows 说明）。旧 Windows 上 `irm` 报「基础连接已经关闭」时，先执行 `[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor 3072` 打开 TLS 1.2。
 
+## worktree 共享
+
+setup 装的 `post-checkout` 钩子让之后建的每个 worktree 自动带上根工作区被忽略的本机资产（规则文件、`.memory`、项目级 skills 与 agents、`.codex/config.toml`、`.mcp.json`、`.env`）。接线前建的 worktree 手动跑一次：
+
+```bash
+~/.vvnocode/rules/skills/agent-memory-setup/worktree-share.sh link /path/to/worktree
+```
+
+Windows：
+
+```powershell
+pwsh -File "$env:USERPROFILE\.vvnocode\rules\skills\agent-memory-setup\worktree-share.ps1" link C:\path\to\worktree
+```
+
+仓根放 `.worktree-share` 增删共享项（一行一项，`#` 注释，`!` 前缀剔除内置项）。机制与陷阱见 [SKILL.md](SKILL.md)「worktree 里效果不变」。
+
 ## 验证 Codex 有效配置
 
 `codex doctor` 只报全局配置，看不出项目级 `.codex/config.toml` 是否被采纳。探针走 app-server 的 `config/read` 按目录解析有效值，并抓「项目未被信任」的警告：
