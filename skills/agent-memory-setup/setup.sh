@@ -173,7 +173,32 @@ RULE
     ok "已在 AGENTS.md 追加「项目记忆」节"
 fi
 
-# ── 7) 收尾：需要人工做的两件事 ──
+# ── 7) worktree 共享钩子：git worktree add 后把根工作区的本机资产共享进新 worktree ──
+# git worktree add 只检出入库文件，接线写下的本机文件（团队仓里的 CLAUDE.md / AGENTS.md、.codex/config.toml、项目级 skills、
+# 未入库的 .memory）在新 worktree 里全部缺失。钩子装在仓库共用的 hooks 目录，任何方式建的 worktree（git、Claude --worktree、
+# superpowers）都触发；模板见同目录 hooks/post-checkout，__SKILL_DIR__ 替换为本 skill 的绝对路径，Windows 上钩子按 $OSTYPE 分派到 .ps1。
+# 管道运行时 SCRIPT_DIR 无意义，按全局安装的托管位置兜底。
+SKILL_DIR="$SCRIPT_DIR"
+[ -n "$SKILL_DIR" ] && [ -f "$SKILL_DIR/worktree-share.sh" ] || SKILL_DIR="$HOME/.vvnocode/rules/skills/agent-memory-setup"
+HOOK_MARK='# agent-memory-setup post-checkout'
+HOOK_HINT="bash \"$SKILL_DIR/worktree-share.sh\" link \"\$PWD\" || true"
+if [ ! -f "$SKILL_DIR/worktree-share.sh" ]; then
+    warn "未找到 $SKILL_DIR/worktree-share.sh，跳过钩子安装：请先运行全局安装（vvnocode/AGENTS.md 的 install.sh）再重跑"
+elif [ -n "$(git config --get core.hooksPath || true)" ]; then
+    warn "本仓已设 core.hooksPath=$(git config --get core.hooksPath)，.git/hooks 不生效，未写钩子：请在该目录 post-checkout 的 flag=1 分支末尾追加：$HOOK_HINT"
+else
+    HOOK="$(git rev-parse --git-path hooks)/post-checkout"
+    mkdir -p "$(dirname "$HOOK")"
+    if [ -f "$HOOK" ] && ! head -5 "$HOOK" | grep -qxF "$HOOK_MARK"; then
+        warn "$HOOK 已存在且不是本 skill 写的，未覆盖：请在其 flag=1 分支末尾追加：$HOOK_HINT"
+    else
+        sed "s|__SKILL_DIR__|$SKILL_DIR|" "$SKILL_DIR/hooks/post-checkout" > "$HOOK"
+        chmod +x "$HOOK"
+        ok "已写 ${HOOK}（worktree 共享钩子）"
+    fi
+fi
+
+# ── 8) 收尾：需要人工做的两件事 ──
 echo
 echo "── Codex 信任（用 Codex 才需要；项目未被信任时 .codex/ 整体静默不加载）──"
 echo "把下面这段追加到 ~/.codex/config.toml："
@@ -190,5 +215,7 @@ else
     echo "Codex ：确认 trusted 后运行 curl -fsSL $RAW_BASE/codex-effective-config.py | python3 - \"$ROOT\""
 fi
 echo "dsh / opencode：在本目录开会话，问同一问题；它们读 AGENTS.md，答得出即生效"
+echo "worktree：新建的 worktree 由钩子自动共享本机资产（规则文件、.memory、项目级 skills、Codex 配置）；接线前已有的 worktree 手动执行一次："
+echo "         bash \"$SKILL_DIR/worktree-share.sh\" link <worktree路径>（Windows：pwsh -File \"$SKILL_DIR/worktree-share.ps1\" link <worktree路径>）"
 [ "$WARN" -gt 0 ] && echo && echo "⚠ 共 $WARN 条告警，见上文，需人工处理"
 exit 0

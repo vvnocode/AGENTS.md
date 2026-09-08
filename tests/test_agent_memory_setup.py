@@ -151,6 +151,55 @@ class AgentMemorySetupTest(unittest.TestCase):
         self.run_setup("--with-rule")
         self.assertEqual(agents, (self.repo / "AGENTS.md").read_text())
 
+    # ── 第 8 步：worktree 共享钩子 ──
+    HOOK_MARK = "# agent-memory-setup post-checkout"
+
+    def hook_path(self) -> Path:
+        return self.repo / ".git" / "hooks" / "post-checkout"
+
+    def skill_dir_in_hook(self) -> str:
+        """钩子里 SKILL_DIR 的写法；setup.ps1 用正斜杠，子类覆盖。"""
+        return str(SETUP.parent)
+
+    def test_hook_is_installed(self) -> None:
+        """全新仓跑完：钩子存在、可执行、第 2 行是标记、内含 skill 目录绝对路径。"""
+        self.run_setup()
+        hook = self.hook_path()
+        self.assertTrue(hook.is_file(), "应写入 .git/hooks/post-checkout")
+        self.assertTrue(os.access(hook, os.X_OK) or os.name == "nt")
+        text = hook.read_text(encoding="utf-8")
+        self.assertEqual(text.splitlines()[1], self.HOOK_MARK)
+        self.assertIn(self.skill_dir_in_hook(), text)
+        self.assertNotIn("__SKILL_DIR__", text)
+        self.assertNotIn("\r\n", text, "钩子由 sh 执行，必须是 LF")
+
+    def test_hook_rerun_unchanged(self) -> None:
+        """重跑后钩子字节不变。"""
+        self.run_setup()
+        before = self.hook_path().read_bytes()
+        self.run_setup()
+        self.assertEqual(before, self.hook_path().read_bytes())
+
+    def test_hooks_path_set_is_left_alone(self) -> None:
+        """仓库已设 core.hooksPath：不写 .git/hooks，告警并给接入指引。"""
+        subprocess.run(["git", "config", "core.hooksPath", ".githooks"], cwd=self.repo, check=True)
+        proc = self.run_setup()
+        self.assertFalse(self.hook_path().exists())
+        self.assertIn(self.WARN_MARK, proc.stdout)
+        self.assertIn("core.hooksPath", proc.stdout)
+        self.assertIn("worktree-share", proc.stdout)
+
+    def test_foreign_hook_is_kept(self) -> None:
+        """已有别人的 post-checkout：内容不变，告警并给接入指引。"""
+        mine = "#!/bin/sh\necho mine\n"
+        self.hook_path().parent.mkdir(parents=True, exist_ok=True)
+        self.hook_path().write_text(mine, encoding="utf-8")
+        self.hook_path().chmod(0o755)
+        proc = self.run_setup()
+        self.assertEqual(self.hook_path().read_text(encoding="utf-8"), mine)
+        self.assertIn(self.WARN_MARK, proc.stdout)
+        self.assertIn("worktree-share", proc.stdout)
+
     def run_piped(self, *args: str) -> subprocess.CompletedProcess:
         """模拟 `curl ... | bash -s -- 参数`：脚本从 stdin 进入，$0 是 bash，磁盘上没有脚本文件。"""
         env = {**os.environ, "HOME": self.temp_dir.name, "LC_ALL": "en_US.UTF-8"}
