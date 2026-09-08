@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# 把本仓的 CLAUDE.md 软链到本机各 AI 编码工具的用户级规则入口。幂等、只增不减、不覆盖已有文件。
+# 把本仓的 AGENTS.md 软链到本机各 AI 编码工具的用户级规则入口。幂等、只增不减、不覆盖已有文件。
 #
 # 用法（不需要手工 clone）：
-#   curl -fsSL https://raw.githubusercontent.com/vvnocode/claude.md/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/vvnocode/AGENTS.md/main/install.sh | bash
 #   ./install.sh                                   # 在本仓 clone 内运行：软链指向本仓，开发用
 #
 # 仓库来源按运行位置自动判定：
@@ -26,7 +26,7 @@ set -euo pipefail
 # 注意：变量后紧跟中文标点必须写 ${VAR}。macOS 自带 bash 3.2 在 UTF-8 locale 下会把 $VAR（ 的首字节并入变量名。
 main() {
 
-    REPO_URL="${RULES_REPO_URL:-https://github.com/vvnocode/claude.md.git}"
+    REPO_URL="${RULES_REPO_URL:-https://github.com/vvnocode/AGENTS.md.git}"
     REPO_DIR="${RULES_REPO_DIR:-$HOME/.vvnocode/rules}"
     LEGACY_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/vibe-coding-rules"   # README 早期写法的位置，见下方迁移
     ENTRIES=(
@@ -39,9 +39,9 @@ main() {
     ADDED=0; KEPT=0; MOVED=0; WARN=0
 
     # ── 仓库来源 ──
-    # $0 所在目录同时有 install.sh 与 CLAUDE.md 即视为本仓 clone；管道运行时 $0 是 bash，落到托管副本分支。
+    # $0 所在目录同时有 install.sh 与 AGENTS.md 即视为本仓 clone；管道运行时 $0 是 bash，落到托管副本分支。
     HERE=$(cd "$(dirname "$0")" 2>/dev/null && pwd -P || true)
-    if [ -n "$HERE" ] && [ -f "$HERE/install.sh" ] && [ -f "$HERE/CLAUDE.md" ]; then
+    if [ -n "$HERE" ] && [ -f "$HERE/install.sh" ] && [ -f "$HERE/AGENTS.md" ]; then
         REPO="$HERE"
         echo "· 来源：本仓 clone $REPO"
     else
@@ -68,17 +68,18 @@ main() {
         fi
         REPO=$(cd "$REPO_DIR" && pwd -P)
     fi
-    RULES="$REPO/CLAUDE.md"
+    RULES="$REPO/AGENTS.md"
 
     # ── 软链到各工具入口 ──
     for link in "${ENTRIES[@]}"; do
         mkdir -p "$(dirname "$link")"
         if [ -L "$link" ]; then
-            # 已是软链：指向本仓即就位；指向旧托管位置的是按早期 README 建的，重指到新位置；指向别处只告警（可能是用户自己的规则仓）
+            # 已是软链：指向本仓即就位；指向旧托管位置（早期 README）或本仓旧文件名 CLAUDE.md（2026-09-08 改名前）的重指；
+            # 指向别处只告警（可能是用户自己的规则仓）
             cur=$(readlink "$link")
             if [ "$cur" = "$RULES" ]; then
                 KEPT=$((KEPT+1))
-            elif [ "${cur#"$LEGACY_DIR/"}" != "$cur" ]; then
+            elif [ "${cur#"$LEGACY_DIR/"}" != "$cur" ] || [ "$cur" = "$REPO/CLAUDE.md" ]; then
                 rm "$link"; ln -s "$RULES" "$link"; MOVED=$((MOVED+1))
             else
                 echo "⚠ $link 已指向 ${cur}，未改动"; WARN=$((WARN+1))

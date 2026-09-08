@@ -1,4 +1,4 @@
-# CLAUDE.md：跨工具 AI 编程协作规范
+# AGENTS.md：跨工具 AI 编程协作规范
 
 一份可移植、可审查、可版本控制的 AI 编程协作规范。以单一 Markdown 文件为规则源，通过符号链接或项目级入口复用于 Claude Code、Codex、Gemini CLI、OpenCode、Cursor、DeepSeek Harness 等工具。
 
@@ -6,7 +6,7 @@
 
 ## 项目定位
 
-不同 AI 编程工具使用不同的规则文件名和加载位置，但规则内容往往高度重合。本项目将通用协作规范集中维护在 [`CLAUDE.md`](./CLAUDE.md) 中，再按各工具约定的文件名进行挂载，从而解决以下问题：
+不同 AI 编程工具使用不同的规则文件名和加载位置，但规则内容往往高度重合。本项目将通用协作规范集中维护在 [`AGENTS.md`](./AGENTS.md) 中，再按各工具约定的文件名进行挂载，从而解决以下问题：
 
 - **单一规则源**：只维护一份正文，避免多个工具配置逐渐分叉。
 - **跨工具复用**：同一套工程纪律可以映射到不同工具的用户级或项目级入口。
@@ -14,11 +14,13 @@
 - **隐私可控**：仓库版本不包含个人路径、所在地、凭据或内部地址。
 - **按项目覆盖**：通用规则作为默认值，具体项目仍可提供更精确的本地约束。
 
+正文文件名取跨工具约定的 `AGENTS.md`（Codex、OpenCode、Cursor、DeepSeek Harness 都读它），而不是某一家的 `CLAUDE.md`；Claude Code 通过软链到 `~/.claude/CLAUDE.md` 读同一份。仓库 2026-09-08 由 `vvnocode/claude.md` 改名而来。
+
 这不是提示词合集，也不绑定某个模型。它关注的是长期稳定的工程行为：先理解再修改、控制变更范围、用证据验证结果、明确分支与交付流程。
 
 ## 规则结构
 
-[`CLAUDE.md`](./CLAUDE.md) 分为三个层次：
+[`AGENTS.md`](./AGENTS.md) 分为三个层次：
 
 | 部分 | 内容 | 维护方式 |
 |---|---|---|
@@ -49,18 +51,18 @@
 
 ## 快速开始
 
-一条命令把仓库 clone 到 `~/.vvnocode/rules`，并把 `CLAUDE.md` 软链到各工具的用户级规则入口（Claude Code、Codex、Gemini CLI、OpenCode、DeepSeek Harness）。幂等：重跑即更新，已存在的目标只告警不覆盖。
+一条命令把仓库 clone 到 `~/.vvnocode/rules`，并把 `AGENTS.md` 软链到各工具的用户级规则入口（Claude Code、Codex、Gemini CLI、OpenCode、DeepSeek Harness）。幂等：重跑即更新，已存在的目标只告警不覆盖。
 
 **macOS / Linux**：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/vvnocode/claude.md/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/vvnocode/AGENTS.md/main/install.sh | bash
 ```
 
 **Windows**（系统自带的 Windows PowerShell 5.1 即可）：
 
 ```powershell
-irm https://raw.githubusercontent.com/vvnocode/claude.md/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/vvnocode/AGENTS.md/main/install.ps1 | iex
 ```
 
 Windows 建文件软链需要开发者模式或管理员权限；没有时脚本改为复制文件并在末尾打上标记，之后每次重跑安装会刷新这些副本。旧 Windows 上 `irm` 报「基础连接已经关闭」时，先执行 `[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor 3072` 打开 TLS 1.2。
@@ -81,7 +83,7 @@ Cursor 的全局 User Rules 通过设置界面维护，不是稳定的文件挂�
 
 | 仓库 | 管什么 | 装到哪 | 缺了会怎样 |
 |---|---|---|---|
-| [claude.md](https://github.com/vvnocode/claude.md)（本仓） | 跨工具全局规则，含「项目记忆」读写规则与 llm-wiki 路由段 | `~/.vvnocode/rules`，软链到各工具的用户级规则入口 | 记忆读写规则没人下发：接线时用 `setup.sh --with-rule` 写进仓内 `AGENTS.md`；llm-wiki 路由段手工粘贴 |
+| [AGENTS.md](https://github.com/vvnocode/AGENTS.md)（本仓） | 跨工具全局规则，含「项目记忆」读写规则与 llm-wiki 路由段 | `~/.vvnocode/rules`，软链到各工具的用户级规则入口 | 记忆读写规则没人下发：接线时用 `setup.sh --with-rule` 写进仓内 `AGENTS.md`；llm-wiki 路由段手工粘贴 |
 | [skills](https://github.com/vvnocode/skills) | 可公开分发的 skill，含给任意仓库接线的 `agent-memory-setup` | `~/.vvnocode/skills`，软链到三处全局 Skill 发现根 | 仓库不接线，偏好走各工具自带记忆；llm-wiki 的 bootstrap 会自动补装 |
 | [llm-wiki](https://github.com/vvnocode/llm-wiki) | 个人知识工作台：跨项目的机制、决策、案例 | 目录自选，`~/.llm-wiki` 软链指过去。它是数据仓、可一机多实例，不进 `~/.vvnocode` | 规则里的「全局知识工作台」整段失效，不查不写 |
 
@@ -101,7 +103,7 @@ llm-wiki 按其 README 或 `SETUP-FOR-AI.md` 部署。
 
 ```bash
 # 先设置本仓库中规则源的绝对路径。
-RULES_FILE="$HOME/.vvnocode/rules/CLAUDE.md"
+RULES_FILE="$HOME/.vvnocode/rules/AGENTS.md"
 PROJECT_ROOT="/path/to/project"
 
 # 只创建本机实际使用的入口，不覆盖已有项目规则，也不要提交这些绝对路径链接。
@@ -130,7 +132,7 @@ ln -s "$RULES_FILE" "$PROJECT_ROOT/GEMINI.md"  # Gemini CLI
 ```bash
 RULES_HOME="$HOME/.vvnocode/rules"
 git -C "$RULES_HOME" fetch origin
-git -C "$RULES_HOME" diff HEAD..origin/main -- CLAUDE.md README.md
+git -C "$RULES_HOME" diff HEAD..origin/main -- AGENTS.md README.md
 git -C "$RULES_HOME" merge --ff-only origin/main
 ```
 
@@ -153,7 +155,7 @@ git -C "$RULES_HOME" merge --ff-only origin/main
 ```text
 .
 ├── .gitignore   # 本地配置、凭据和临时文件的忽略规则
-├── CLAUDE.md    # 跨工具复用的唯一规则源
+├── AGENTS.md    # 跨工具复用的唯一规则源
 ├── install.sh   # 一键安装（macOS / Linux）：clone 到 ~/.vvnocode/rules 并软链各入口
 ├── install.ps1  # 一键安装（Windows），纯 ASCII
 ├── LICENSE      # CC0 1.0 Universal 完整法律文本

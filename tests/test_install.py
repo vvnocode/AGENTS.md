@@ -2,7 +2,7 @@
 """install.sh 的离线回归测试：HOME 与托管仓目录都指向临时目录，远端用本地 file:// 仓库代替 GitHub，不联网、不触碰用户主目录。
 
 覆盖：
-- 管道运行（curl | bash）：脚本不在磁盘上、cwd 在仓库之外，自行 clone 到 RULES_REPO_DIR，再把五个用户级入口软链到 CLAUDE.md
+- 管道运行（curl | bash）：脚本不在磁盘上、cwd 在仓库之外，自行 clone 到 RULES_REPO_DIR，再把五个用户级入口软链到 AGENTS.md
 - 重跑：托管副本 git pull 拿到新规则，软链原样不动、读到新内容
 - 在本仓 clone 内直接运行：不 clone、不建托管副本，软链直接指向本仓
 - 入口已是普通文件：只告警不覆盖（用户须手动合并）
@@ -56,12 +56,12 @@ class InstallTest(unittest.TestCase):
 
     # ── 构造远端 ──
     def make_origin(self, rules: str = "# rules v1\n") -> None:
-        """建一个形如本仓的远端：install.sh、install.ps1、CLAUDE.md，提交到 main。"""
+        """建一个形如本仓的远端：install.sh、install.ps1、AGENTS.md，提交到 main。"""
         self.origin.mkdir()
         subprocess.run(["git", "init", "-q", "-b", "main"], cwd=self.origin, check=True)
         for script in (INSTALL, INSTALL_PS1):
             shutil.copy(script, self.origin / script.name)
-        (self.origin / "CLAUDE.md").write_text(rules, encoding="utf-8")
+        (self.origin / "AGENTS.md").write_text(rules, encoding="utf-8")
         self.commit("init")
 
     def commit(self, msg: str) -> None:
@@ -113,24 +113,24 @@ class InstallTest(unittest.TestCase):
         self.make_origin()
         self.run_piped()
         self.assertTrue((self.src / ".git").is_dir(), "应在 RULES_REPO_DIR 建托管副本")
-        self.assert_linked(self.src / "CLAUDE.md")
+        self.assert_linked(self.src / "AGENTS.md")
         self.assertEqual(self.entry(".claude/CLAUDE.md").read_text(encoding="utf-8"), "# rules v1\n")
         self.assertEqual(list(self.elsewhere.iterdir()), [])
 
     def test_rerun_pulls_update(self) -> None:
         self.make_origin()
         self.run_piped()
-        (self.origin / "CLAUDE.md").write_text("# rules v2\n", encoding="utf-8")
+        (self.origin / "AGENTS.md").write_text("# rules v2\n", encoding="utf-8")
         self.commit("v2")
         self.run_piped()
-        self.assert_linked(self.src / "CLAUDE.md")
+        self.assert_linked(self.src / "AGENTS.md")
         self.assertEqual(self.entry(".codex/AGENTS.md").read_text(encoding="utf-8"), "# rules v2\n")
 
     def test_local_clone_links_to_itself(self) -> None:
         env = {**self.env(), "RULES_REPO_URL": "file:///nonexistent"}   # 若尝试 clone 必失败
         proc = subprocess.run(["bash", str(INSTALL)], cwd=ROOT, env=env, capture_output=True, text=True, check=False)
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
-        self.assert_linked(ROOT / "CLAUDE.md")
+        self.assert_linked(ROOT / "AGENTS.md")
         self.assertFalse(self.src.exists())
 
     def test_existing_plain_file_is_kept(self) -> None:
@@ -142,7 +142,7 @@ class InstallTest(unittest.TestCase):
         self.assertFalse(mine.is_symlink())
         self.assertEqual(mine.read_text(encoding="utf-8"), "mine\n")
         self.assertIn(self.WARN_MARK, proc.stdout)
-        self.assert_linked(self.src / "CLAUDE.md", entries=tuple(e for e in ENTRIES if e != ".claude/CLAUDE.md"))
+        self.assert_linked(self.src / "AGENTS.md", entries=tuple(e for e in ENTRIES if e != ".claude/CLAUDE.md"))
 
     def test_existing_foreign_link_is_kept(self) -> None:
         self.make_origin()
@@ -160,7 +160,7 @@ class InstallTest(unittest.TestCase):
         self.run_piped(self.env_without_repo_dir())
         new_dir = self.home / ".vvnocode" / "rules"
         self.assertTrue((new_dir / ".git").is_dir(), "默认托管位置应为 ~/.vvnocode/rules")
-        self.assert_linked(new_dir / "CLAUDE.md")
+        self.assert_linked(new_dir / "AGENTS.md")
 
     def test_legacy_dir_is_moved_and_links_repointed(self) -> None:
         self.make_origin()
@@ -169,12 +169,22 @@ class InstallTest(unittest.TestCase):
         subprocess.run(["git", "clone", "-q", self.origin.as_uri(), str(legacy)], check=True, capture_output=True)
         link = self.entry(".claude/CLAUDE.md")
         link.parent.mkdir(parents=True)
-        link.symlink_to(legacy / "CLAUDE.md")
+        link.symlink_to(legacy / "AGENTS.md")
         proc = self.run_piped(self.env_without_repo_dir())
         new_dir = self.home / ".vvnocode" / "rules"
         self.assertTrue((new_dir / ".git").is_dir(), proc.stdout)
         self.assertFalse(legacy.exists(), "旧托管目录应已搬走")
-        self.assert_linked(new_dir / "CLAUDE.md")
+        self.assert_linked(new_dir / "AGENTS.md")
+        self.assertNotIn(self.WARN_MARK, proc.stdout, proc.stdout)
+
+    def test_link_to_old_file_name_is_repointed(self) -> None:
+        """入口指向本仓旧文件名 CLAUDE.md（2026-09-08 改名前的安装）：重指到 AGENTS.md，不告警。"""
+        self.make_origin()
+        link = self.entry(".codex/AGENTS.md")
+        link.parent.mkdir(parents=True)
+        link.symlink_to(self.src / "CLAUDE.md")
+        proc = self.run_piped()
+        self.assert_linked(self.src / "AGENTS.md")
         self.assertNotIn(self.WARN_MARK, proc.stdout, proc.stdout)
 
 

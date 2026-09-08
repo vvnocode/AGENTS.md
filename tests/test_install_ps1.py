@@ -51,7 +51,7 @@ class InstallPs1Test(bash_tests.InstallTest):
         env = {**self.env(), "RULES_REPO_URL": "file:///nonexistent"}
         proc = self.run_ps(f"& '{bash_tests.INSTALL_PS1}'", bash_tests.ROOT, env)
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
-        self.assert_linked(bash_tests.ROOT / "CLAUDE.md")
+        self.assert_linked(bash_tests.ROOT / "AGENTS.md")
         self.assertFalse(self.src.exists())
 
 

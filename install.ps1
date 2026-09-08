@@ -1,10 +1,10 @@
 <#
-vvnocode/claude.md install.ps1 -- Windows counterpart of install.sh.
-Links this repo's CLAUDE.md into every AI coding tool's user-level rules entry on this machine. Idempotent, add-only,
+vvnocode/AGENTS.md install.ps1 -- Windows counterpart of install.sh.
+Links this repo's AGENTS.md into every AI coding tool's user-level rules entry on this machine. Idempotent, add-only,
 never overwrites an existing file.
 
 Usage (no manual clone needed; the built-in Windows PowerShell 5.1 is enough):
-  irm https://raw.githubusercontent.com/vvnocode/claude.md/main/install.ps1 | iex
+  irm https://raw.githubusercontent.com/vvnocode/AGENTS.md/main/install.ps1 | iex
   powershell -ExecutionPolicy Bypass -File .\install.ps1     # inside a clone of this repo: link that clone (development)
 
 Where the repo comes from is decided by where the script runs, same as install.sh:
@@ -35,7 +35,7 @@ param()
 
     $IsWin = $env:OS -eq 'Windows_NT'
     $UserHome = if ($IsWin) { $env:USERPROFILE } else { $HOME }
-    $RepoUrl = if ($env:RULES_REPO_URL) { $env:RULES_REPO_URL } else { 'https://github.com/vvnocode/claude.md.git' }
+    $RepoUrl = if ($env:RULES_REPO_URL) { $env:RULES_REPO_URL } else { 'https://github.com/vvnocode/AGENTS.md.git' }
     $ConfigHome = if ($env:XDG_CONFIG_HOME) { $env:XDG_CONFIG_HOME } else { Join-Path $UserHome '.config' }
     $DshHome = if ($env:DSH_HOME) { $env:DSH_HOME } else { Join-Path $UserHome '.dsh' }
     $RepoDir = if ($env:RULES_REPO_DIR) { $env:RULES_REPO_DIR } else { Join-Path (Join-Path $UserHome '.vvnocode') 'rules' }
@@ -47,7 +47,7 @@ param()
         (Join-Path (Join-Path $ConfigHome 'opencode') 'AGENTS.md'),
         (Join-Path $DshHome 'AGENTS.md')
     )
-    $Marker = '<!-- copied by vvnocode/claude.md install.ps1: do not edit, rerun the installer to refresh -->'
+    $Marker = '<!-- copied by vvnocode/AGENTS.md install.ps1: do not edit, rerun the installer to refresh -->'
     $Utf8 = New-Object Text.UTF8Encoding $false
     $Added = 0; $Kept = 0; $Moved = 0; $Copied = 0; $Warn = 0
 
@@ -68,9 +68,9 @@ param()
     }
 
     # -- Repo source: the script directory ($PSScriptRoot is empty under "irm | iex", fall back to the current directory)
-    #    counts as a clone of this repo when it holds both install.ps1 and CLAUDE.md --
+    #    counts as a clone of this repo when it holds both install.ps1 and AGENTS.md --
     $here = if ($PSScriptRoot) { $PSScriptRoot } else { $PWD.Path }
-    if ((Test-Path (Join-Path $here 'install.ps1') -PathType Leaf) -and (Test-Path (Join-Path $here 'CLAUDE.md') -PathType Leaf)) {
+    if ((Test-Path (Join-Path $here 'install.ps1') -PathType Leaf) -and (Test-Path (Join-Path $here 'AGENTS.md') -PathType Leaf)) {
         $Repo = $here
         Write-Host "* source: local clone $Repo"
     } else {
@@ -95,19 +95,20 @@ param()
         }
         $Repo = (Resolve-Path $RepoDir).Path
     }
-    $Rules = Join-Path $Repo 'CLAUDE.md'
+    $Rules = Join-Path $Repo 'AGENTS.md'
 
     # -- Link each entry --
     foreach ($link in $Entries) {
         New-Item -ItemType Directory -Force (Split-Path $link -Parent) | Out-Null
         $item = Get-Item -LiteralPath $link -Force -ErrorAction SilentlyContinue
         if ($item -and $item.LinkType) {
-            # Already a link: at this repo means done; into the legacy location was made per the early README and is
-            # repointed; elsewhere is only reported (may be the user's own rules repo)
+            # Already a link: at this repo means done; into the legacy location (early README) or at this repo's old file
+            # name CLAUDE.md (before the 2026-09-08 rename) is repointed; elsewhere is only reported (may be the user's own rules repo)
             $target = [string](@($item.Target)[0])
             $legacyPrefix = (Get-NormalizedPath $LegacyDir) + [IO.Path]::DirectorySeparatorChar
+            $oldName = Get-NormalizedPath (Join-Path $Repo 'CLAUDE.md')
             if ((Get-NormalizedPath $target) -eq (Get-NormalizedPath $Rules)) { $Kept++ }
-            elseif ((Get-NormalizedPath $target).StartsWith($legacyPrefix)) {
+            elseif ((Get-NormalizedPath $target).StartsWith($legacyPrefix) -or ((Get-NormalizedPath $target) -eq $oldName)) {
                 $item.Delete()   # removes the link only, never its target
                 New-Item -ItemType SymbolicLink -Path $link -Value $Rules | Out-Null
                 $Moved++
