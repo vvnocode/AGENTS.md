@@ -23,6 +23,8 @@ INSTALL = ROOT / "install.sh"
 INSTALL_PS1 = ROOT / "install.ps1"
 # 五个用户级规则入口，相对 HOME（XDG_CONFIG_HOME 与 DSH_HOME 在测试环境里固定指到 HOME 下）
 ENTRIES = (".claude/CLAUDE.md", ".codex/AGENTS.md", ".gemini/GEMINI.md", ".config/opencode/AGENTS.md", ".dsh/AGENTS.md")
+# 三处全局 Skill 发现根，相对 HOME；agent-memory-setup 软链到每一处
+SKILL_ROOTS = (".agents/skills", ".claude/skills", ".codex/skills")
 GIT_CONFIG = ["-c", "user.name=test", "-c", "user.email=test@example.com", "-c", "core.autocrlf=false"]
 
 
@@ -62,6 +64,10 @@ class InstallTest(unittest.TestCase):
         for script in (INSTALL, INSTALL_PS1):
             shutil.copy(script, self.origin / script.name)
         (self.origin / "AGENTS.md").write_text(rules, encoding="utf-8")
+        # 远端也带 skill 目录：install 要把它软链到三处发现根
+        skill = self.origin / "skills" / "agent-memory-setup"
+        skill.mkdir(parents=True)
+        (skill / "SKILL.md").write_text("---\nname: agent-memory-setup\n---\n", encoding="utf-8")
         self.commit("init")
 
     def commit(self, msg: str) -> None:
@@ -186,6 +192,50 @@ class InstallTest(unittest.TestCase):
         proc = self.run_piped()
         self.assert_linked(self.src / "AGENTS.md")
         self.assertNotIn(self.WARN_MARK, proc.stdout, proc.stdout)
+
+    # ── skill 软链到三处 Skill 发现根 ──
+    SKILL_SUMMARY_REPOINTED = "skill 新建 0 条，已就位 0 条，重指 3 条"   # install.ps1 全 ASCII，子类覆盖
+
+    def skill_link(self, root: str) -> Path:
+        return self.home / root / "agent-memory-setup"
+
+    def assert_skill_linked(self, target: Path) -> None:
+        for root in SKILL_ROOTS:
+            actual = link_target(self.skill_link(root))
+            self.assertIsNotNone(actual, f"{root} 下应有 agent-memory-setup 链接")
+            self.assertEqual(os.path.normcase(actual), os.path.normcase(str(target)), root)
+
+    def test_piped_links_skill_to_three_roots(self) -> None:
+        """管道运行后三处发现根都有 agent-memory-setup 软链，指向托管副本内的 skill 目录。"""
+        self.make_origin()
+        self.run_piped()
+        self.assert_skill_linked(self.src / "skills" / "agent-memory-setup")
+
+    def test_skill_link_to_old_skills_repo_is_repointed(self) -> None:
+        """发现根里指向旧 skills 仓托管位置的链接：重指到本仓，不告警。"""
+        self.make_origin()
+        old = self.home / ".vvnocode" / "skills" / "skills" / "agent-memory-setup"
+        old.mkdir(parents=True)
+        for root in SKILL_ROOTS:
+            self.skill_link(root).parent.mkdir(parents=True, exist_ok=True)
+            self.skill_link(root).symlink_to(old)
+        proc = self.run_piped()
+        self.assert_skill_linked(self.src / "skills" / "agent-memory-setup")
+        self.assertIn(self.SKILL_SUMMARY_REPOINTED, proc.stdout)
+        self.assertNotIn(self.WARN_MARK, proc.stdout, proc.stdout)
+
+    def test_skill_root_plain_dir_is_kept(self) -> None:
+        """发现根里已是普通目录：不覆盖，告警，其余两处照装。"""
+        self.make_origin()
+        mine = self.skill_link(".claude/skills")
+        mine.mkdir(parents=True)
+        (mine / "keep").write_text("x", encoding="utf-8")
+        proc = self.run_piped()
+        self.assertFalse(mine.is_symlink())
+        self.assertTrue((mine / "keep").is_file())
+        self.assertIn(self.WARN_MARK, proc.stdout)
+        for root in (".agents/skills", ".codex/skills"):
+            self.assertEqual(os.path.normcase(link_target(self.skill_link(root))), os.path.normcase(str(self.src / "skills" / "agent-memory-setup")))
 
 
 if __name__ == "__main__":
