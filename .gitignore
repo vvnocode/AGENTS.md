@@ -28,6 +28,10 @@ CLAUDE.private.md
 credentials*.json
 secrets*.json
 
+# Python 测试字节码
+__pycache__/
+*.pyc
+
 # 临时文件、日志和构建产物
 *.log
 tmp/
