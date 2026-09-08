@@ -33,6 +33,7 @@ class InstallPs1Test(bash_tests.InstallTest):
     """install.ps1 行为契约：用例全部来自 InstallTest。"""
 
     WARN_MARK = "!"
+    SKILL_SUMMARY_REPOINTED = "skill added 0, kept 0, repointed 3"
 
     def run_ps(self, command: str, cwd, env) -> subprocess.CompletedProcess:
         return subprocess.run(

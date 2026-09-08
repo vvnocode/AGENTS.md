@@ -8,9 +8,8 @@ Usage (no manual clone needed; the built-in Windows PowerShell 5.1 is enough):
   powershell -ExecutionPolicy Bypass -File .\install.ps1     # inside a clone of this repo: link that clone (development)
 
 Where the repo comes from is decided by where the script runs, same as install.sh:
-  outside a clone / piped : clone the repo into $env:RULES_REPO_DIR (default %USERPROFILE%\.vvnocode\rules, the same
-                            convention as the skills repo at %USERPROFILE%\.vvnocode\skills), or git pull --ff-only if it
-                            already exists. Re-running the same command updates it. $env:RULES_REPO_URL may point at a fork.
+  outside a clone / piped : clone the repo into $env:RULES_REPO_DIR (default %USERPROFILE%\.vvnocode\rules), or
+                            git pull --ff-only if it already exists. Re-running the same command updates it. $env:RULES_REPO_URL may point at a fork.
                             The early README kept the clone at ~\.config\vibe-coding-rules: when the new location is absent
                             and the old one holds a clone it is moved, and entries that point into the old location are repointed.
   inside a clone          : use that clone directly, no network, no managed copy.
@@ -18,6 +17,8 @@ Where the repo comes from is decided by where the script runs, same as install.s
 Entries (each tool's own convention, see the README support matrix):
   ~\.claude\CLAUDE.md, ~\.codex\AGENTS.md, ~\.gemini\GEMINI.md, ~\.config\opencode\AGENTS.md ($env:XDG_CONFIG_HOME
   overrides ~\.config), $env:DSH_HOME\AGENTS.md (default ~\.dsh). Cursor's global User Rules live in its settings UI.
+The skill skills\agent-memory-setup (per-repo wiring: one instruction file, one in-repo memory, the worktree sharing hook)
+is linked into the three global skill discovery roots ~\.agents\skills, ~\.claude\skills and ~\.codex\skills.
 
 File symbolic links on Windows need Developer Mode or admin rights. When creating one fails the file is copied instead and
 tagged with a trailing marker comment; rerunning this installer refreshes such copies after every update. A plain file
@@ -133,6 +134,50 @@ param()
             }
         }
     }
-    Write-Host "* done: added $Added, kept $Kept, repointed $Moved, copied $Copied, warnings $Warn (rules: $Rules)"
+    # -- Link the skill into the three global skill discovery roots --
+    #    ~/.agents/skills is the cross-tool convention (dsh, opencode, Cline ...); Claude and Codex only scan their own
+    #    directory and never ~/.agents/skills, so all three are needed. agent-memory-setup used to live in the
+    #    vvnocode/skills repo (merged into this repo on 2026-09-08): links into that repo's managed clone
+    #    (~/.vvnocode/skills) or the even older XDG location (vvnocode-skills) are repointed here; others are only reported.
+    #    A directory symlink needs Developer Mode or admin rights; without it a junction (no privilege needed) is created.
+    $SkillSrc = Join-Path (Join-Path $Repo 'skills') 'agent-memory-setup'
+    $DataHome = if ($env:XDG_DATA_HOME) { $env:XDG_DATA_HOME } else { Join-Path (Join-Path $UserHome '.local') 'share' }
+    $OldSkill = @(
+        (Get-NormalizedPath (Join-Path $UserHome '.vvnocode\skills\skills\agent-memory-setup')),
+        (Get-NormalizedPath (Join-Path $DataHome 'vvnocode-skills\skills\agent-memory-setup'))
+    )
+    $SkillRoots = @(
+        (Join-Path (Join-Path $UserHome '.agents') 'skills'),
+        (Join-Path (Join-Path $UserHome '.claude') 'skills'),
+        (Join-Path (Join-Path $UserHome '.codex') 'skills')
+    )
+    function New-DirLink([string]$Path, [string]$Target) {
+        try { New-Item -ItemType SymbolicLink -Path $Path -Value $Target -ErrorAction Stop | Out-Null }
+        catch { New-Item -ItemType Junction -Path $Path -Value $Target -ErrorAction Stop | Out-Null }
+    }
+    $SAdded = 0; $SKept = 0; $SMoved = 0
+    foreach ($root in $SkillRoots) {
+        New-Item -ItemType Directory -Force $root | Out-Null
+        $link = Join-Path $root 'agent-memory-setup'
+        $item = Get-Item -LiteralPath $link -Force -ErrorAction SilentlyContinue
+        if ($item -and $item.LinkType) {
+            $target = Get-NormalizedPath ([string](@($item.Target)[0]))
+            if ($target -eq (Get-NormalizedPath $SkillSrc)) { $SKept++ }
+            elseif ($OldSkill -contains $target) {
+                $item.Delete()   # removes the link only, never its target
+                New-DirLink $link $SkillSrc
+                $SMoved++
+            }
+            else { Write-Host "! $link already points to ${target}, left unchanged"; $Warn++ }
+        } elseif ($item) {
+            Write-Host "! $link is a plain directory, left unchanged: replace it by a link to $SkillSrc by hand if it is not yours"; $Warn++
+        } else {
+            New-DirLink $link $SkillSrc
+            $SAdded++
+        }
+    }
+    Write-Host "* done: rules added $Added, kept $Kept, repointed $Moved, copied $Copied; skill added $SAdded, kept $SKept, repointed $SMoved; warnings $Warn (rules: $Rules)"
+    if (Test-Path (Join-Path (Join-Path $UserHome '.vvnocode') 'skills')) { Write-Host "* the old skills repo clone under ~\.vvnocode\skills is no longer used and can be deleted" }
+    Write-Host "* wire up a repository: powershell -ExecutionPolicy Bypass -File `"$SkillSrc\setup.ps1`" [RepoPath]"
     Write-Host "* Cursor: paste the rules into its global User Rules in the settings UI"
 }
