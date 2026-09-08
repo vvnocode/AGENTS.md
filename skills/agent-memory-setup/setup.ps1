@@ -216,11 +216,52 @@ cannot settle (AGENTS.md and CLAUDE.md both plain files with different content) 
             Write-File 'AGENTS.md' ($a + (Get-Text $B64.RuleSection))
             Ok 'appended the project-memory section to AGENTS.md'
         }
+        # -- 7) worktree sharing hook: after git worktree add, share the main worktree's machine-local assets into the new one --
+        #    git worktree add checks out tracked files only; CLAUDE.md / AGENTS.md in team repos, .codex/config.toml, project
+        #    skills and an untracked .memory are all missing there. The hook lives in the repository's shared hooks directory,
+        #    so every way of creating a worktree (git, Claude --worktree, superpowers) triggers it. The template is
+        #    hooks/post-checkout next to this script; __SKILL_DIR__ becomes this skill's absolute path (forward slashes:
+        #    the hook is run by sh). Under irm | iex the script directory is unknown: fall back to the managed install location.
+        $SkillDir = $ScriptDir
+        if (-not $SkillDir -or -not (Test-Path (Join-Path $SkillDir 'worktree-share.sh') -PathType Leaf)) {
+            $userHome = if ($env:OS -eq 'Windows_NT') { $env:USERPROFILE } else { $HOME }
+            $SkillDir = Join-Path (Join-Path (Join-Path (Join-Path $userHome '.vvnocode') 'rules') 'skills') 'agent-memory-setup'
+        }
+        $SkillDirFwd = $SkillDir.Replace('\', '/')
+        $HookMark = '# agent-memory-setup post-checkout'
+        $HookHint = "bash `"$SkillDirFwd/worktree-share.sh`" link `"`$PWD`" || true"
+        $hooksPathCfg = [string](Invoke-Git config --get core.hooksPath)
+        if (-not (Test-Path (Join-Path $SkillDir 'worktree-share.sh') -PathType Leaf)) {
+            Warn "worktree-share.sh not found under ${SkillDir}, hook not installed: run the global installer (vvnocode/AGENTS.md install.ps1) first, then rerun"
+        } elseif ($hooksPathCfg) {
+            Warn "this repo sets core.hooksPath=$hooksPathCfg so .git/hooks is not used, hook not written: append to that directory's post-checkout, at the end of its flag=1 branch: $HookHint"
+        } else {
+            $hooksDir = [string](Invoke-Git rev-parse --git-path hooks)
+            $hook = Join-Path (Get-RepoFile $hooksDir) 'post-checkout'
+            New-Item -ItemType Directory -Force (Split-Path $hook -Parent) | Out-Null
+            $foreign = $false
+            if (Test-Path -LiteralPath $hook -PathType Leaf) {
+                $head = @((Read-File $hook) -split "`r?`n")
+                if ($head.Count -gt 5) { $head = $head[0..4] }
+                $foreign = -not ($head -contains $HookMark)
+            }
+            if ($foreign) {
+                Warn "$hook exists and was not written by this skill, left unchanged: append at the end of its flag=1 branch: $HookHint"
+            } else {
+                $template = [IO.File]::ReadAllText((Join-Path (Join-Path $SkillDir 'hooks') 'post-checkout'), [Text.Encoding]::UTF8)
+                # LF only: the hook is executed by sh, a CRLF shebang line would not run
+                $body = $template.Replace("`r`n", "`n").Replace('__SKILL_DIR__', $SkillDirFwd)
+                [IO.File]::WriteAllText($hook, $body, $Utf8)
+                # git needs the execute bit outside Windows (pwsh on macOS / Linux); Windows ignores it
+                if ($env:OS -ne 'Windows_NT') { & chmod +x $hook }
+                Ok "wrote $hook (worktree sharing hook)"
+            }
+        }
     } finally {
         Pop-Location
     }
 
-    # -- 7) Two things left for a human --
+    # -- 8) Two things left for a human --
     Write-Host ''
     Write-Host '-- Codex trust (only if you use Codex; an untrusted project silently ignores .codex/) --'
     Write-Host 'append this to ~/.codex/config.toml:'
@@ -237,5 +278,7 @@ cannot settle (AGENTS.md and CLAUDE.md both plain files with different content) 
         Write-Host "Codex: once trusted, run: irm $RawBase/codex-effective-config.py -OutFile `"`$env:TEMP\codex-effective-config.py`"; python `"`$env:TEMP\codex-effective-config.py`" `"$Root`""
     }
     Write-Host 'dsh / opencode: open a session here and ask the same question; they read AGENTS.md'
+    Write-Host 'worktree: new worktrees get the machine-local assets (rule files, .memory, project skills, Codex config) through the hook; for worktrees created before this setup run once:'
+    Write-Host "         pwsh -File `"$SkillDir\worktree-share.ps1`" link <worktree path>   (macOS / Linux: bash `"$SkillDir/worktree-share.sh`" link <worktree path>)"
     if ($Warn -gt 0) { Write-Host ''; Write-Host "! $Warn warning(s) above need a human" }
 } -RepoPath $RepoPath -WithRule ([bool]$WithRule) -Help ([bool]$Help) -Rest $Rest -ScriptDir $PSScriptRoot

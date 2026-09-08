@@ -39,6 +39,10 @@ class SetupPs1Test(bash_tests.AgentMemorySetupTest):
     def trust_snippet(self) -> str:
         return '[projects."' + str(self.repo).replace("\\", "\\\\") + '"]'
 
+    def skill_dir_in_hook(self) -> str:
+        """setup.ps1 写进钩子的 skill 目录用正斜杠（钩子由 sh 执行）。"""
+        return str(SETUP_PS1.parent).replace("\\", "/")
+
     def run_ps(self, command: str, cwd: Path | None = None) -> subprocess.CompletedProcess:
         env = {**os.environ, "HOME": self.temp_dir.name, "USERPROFILE": self.temp_dir.name}
         proc = subprocess.run(
