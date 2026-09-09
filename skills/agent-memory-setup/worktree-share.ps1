@@ -6,8 +6,11 @@ Usage:  pwsh -File worktree-share.ps1 link [WorktreePath]     (WorktreePath defa
                                                               the main worktree itself is only reported, nothing is done)
 
 Same contract as worktree-share.sh (read its header for the rationale):
-  - files are copied, directories are linked: a symbolic link first (Developer Mode / admin), a junction as the fallback
-    that needs no privilege. Setting WORKTREE_SHARE_NO_SYMLINK=1 forces the junction path (used by the tests).
+  - files are copied, directories are linked with a SYMBOLIC LINK only (needs Developer Mode or an elevated shell on
+    Windows). Without that privilege a directory is skipped with a warning. A junction is deliberately NOT used as a
+    fallback: git (2.37.3 verified on Windows 10) treats a junction as a plain directory, so `git worktree remove`
+    walks through it and deletes the main worktree's files; an existing junction is reported, never accepted.
+    Setting WORKTREE_SHARE_NO_SYMLINK=1 simulates the missing privilege (used by the tests).
   - only items that exist in the main worktree, are untracked and are gitignored get shared; untracked-but-not-ignored
     items count as pending commits and are only reported.
   - a directory that itself holds tracked files (repos/.gitkeep tracked, clones below it ignored) is expanded into its
@@ -67,6 +70,11 @@ function Get-LinkTarget([string]$Path) {
     return [string](@($item.Target)[0])
 }
 function Test-IsLink([string]$Path) { return $null -ne (Get-LinkTarget $Path) }
+# A junction (Windows only). Never accepted as a shared directory: git worktree remove deletes through it
+function Test-IsJunction([string]$Path) {
+    $item = Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
+    return ($null -ne $item) -and ($item.LinkType -eq 'Junction')
+}
 # Main worktree of the repository that contains $Dir: the first line of git worktree list is always the main one
 function Get-MainWorktree([string]$Dir) {
     $first = [string](@(Invoke-Git $Dir worktree list --porcelain)[0])
@@ -113,16 +121,18 @@ function Ensure-Ignored([string]$Wt, [string]$Rel) {
 function Test-SameFile([string]$A, [string]$B) {
     return (Get-FileHash -LiteralPath $A -Algorithm SHA256).Hash -eq (Get-FileHash -LiteralPath $B -Algorithm SHA256).Hash
 }
+# Directory symbolic link; $false when it cannot be created (no privilege). No junction fallback, see the header
 function New-DirLink([string]$Dst, [string]$Src) {
-    if ($env:WORKTREE_SHARE_NO_SYMLINK -ne '1') {
-        try { New-Item -ItemType SymbolicLink -Path $Dst -Value $Src -ErrorAction Stop | Out-Null; return } catch { }
-    }
-    if (-not $IsWin) { throw "cannot create a symbolic link at $Dst" }
-    New-Item -ItemType Junction -Path $Dst -Value $Src -ErrorAction Stop | Out-Null
+    if ($env:WORKTREE_SHARE_NO_SYMLINK -eq '1') { return $false }
+    try { New-Item -ItemType SymbolicLink -Path $Dst -Value $Src -ErrorAction Stop | Out-Null; return $true } catch { return $false }
 }
 # Share one item: copy a file, link a directory; count what is already in place; report conflicts; re-check ignoring
 function Share-One([string]$Root, [string]$Wt, [string]$Rel) {
     $src = Join-Path $Root $Rel; $dst = Join-Path $Wt $Rel
+    if (Test-IsJunction $dst) {
+        Warn "$Rel is a junction, left unchanged: git worktree remove would delete the main worktree's files through it; remove it (rmdir) and re-run to get a symbolic link"
+        return
+    }
     $target = Get-LinkTarget $dst
     if ($null -ne $target) {
         if ((Get-NormalizedPath $target) -eq (Get-NormalizedPath $src)) { $script:Kept++ } else { Warn "$Rel is already a link to ${target}, left unchanged" }
@@ -135,7 +145,12 @@ function Share-One([string]$Root, [string]$Wt, [string]$Rel) {
     }
     New-Item -ItemType Directory -Force (Split-Path $dst -Parent) | Out-Null
     $isDir = Test-Path -LiteralPath $src -PathType Container
-    if ($isDir) { New-DirLink $dst $src } else { Copy-Item -LiteralPath $src -Destination $dst }
+    if ($isDir) {
+        if (-not (New-DirLink $dst $src)) {
+            Warn "$Rel is not shared: creating a symbolic link needs Developer Mode (Settings > For developers) or an elevated shell; enable one and re-run. A junction is not used because git worktree remove would delete the main worktree's files through it"
+            return
+        }
+    } else { Copy-Item -LiteralPath $src -Destination $dst }
     if (-not (Ensure-Ignored $Wt $Rel)) {
         if ($isDir) { (Get-Item -LiteralPath $dst -Force).Delete() } else { Remove-Item -LiteralPath $dst -Force }
         Warn "$Rel is still not ignored after sharing, undone: check the ignore rules"
