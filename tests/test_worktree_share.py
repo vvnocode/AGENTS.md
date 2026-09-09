@@ -41,8 +41,13 @@ class WorktreeShareTest(unittest.TestCase):
     def summary(self, new: int, kept: int, warn: int) -> str:
         return f"✓ 新建 {new}，已就位 {kept}，告警 {warn}"
 
+    # 本类跑 bash 版脚本；Windows 走 .ps1（钩子按 $OSTYPE 分派），.sh 不是 Windows 的支持路径，整类跳过。.ps1 子类覆盖为 False
+    USES_BASH = True
+
     def setUp(self) -> None:
         """一个有一次空提交的临时仓库作为根工作区。"""
+        if self.USES_BASH and os.name == "nt":
+            self.skipTest("Windows 走 .ps1，.sh 套件不在支持范围")
         self.temp_dir = tempfile.TemporaryDirectory()
         self.root = Path(self.temp_dir.name).resolve() / "root"
         self.root.mkdir()

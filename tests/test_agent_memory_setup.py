@@ -45,8 +45,13 @@ class AgentMemorySetupTest(unittest.TestCase):
         """收尾输出里的 Codex 信任片段首行；Windows 版把反斜杠按 TOML 转义。"""
         return f'[projects."{self.repo}"]'
 
+    # 本类跑 bash 版脚本；Windows 用 setup.ps1，.sh 不是 Windows 的支持路径，整类跳过。.ps1 子类覆盖为 False
+    USES_BASH = True
+
     def setUp(self) -> None:
         """空的临时 git 仓库。"""
+        if self.USES_BASH and os.name == "nt":
+            self.skipTest("Windows 走 .ps1，.sh 套件不在支持范围")
         self.temp_dir = tempfile.TemporaryDirectory()
         self.repo = Path(self.temp_dir.name).resolve() / "repo"
         self.repo.mkdir()

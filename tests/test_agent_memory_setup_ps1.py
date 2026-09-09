@@ -35,6 +35,7 @@ class SetupPs1Test(bash_tests.AgentMemorySetupTest):
     WARN_MARK = "!"
     HELP_TEXT = "Usage"
     WARN_SUMMARY = "1 warning(s)"
+    USES_BASH = False   # 跑 .ps1，Windows 上不跳过
 
     def trust_snippet(self) -> str:
         return '[projects."' + str(self.repo).replace("\\", "\\\\") + '"]'

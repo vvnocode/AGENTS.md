@@ -42,8 +42,12 @@ class InstallTest(unittest.TestCase):
 
     WARN_MARK = "⚠"
     LEGACY_ENV = "XDG_CONFIG_HOME"   # 旧默认托管位置的父目录（install.ps1 同名，Windows 上 README 旧写法是 ~/.config）
+    # 本类跑 bash 版脚本；Windows 用 install.ps1，.sh 不是 Windows 的支持路径，整类跳过。.ps1 子类覆盖为 False
+    USES_BASH = True
 
     def setUp(self) -> None:
+        if self.USES_BASH and os.name == "nt":
+            self.skipTest("Windows 走 .ps1，.sh 套件不在支持范围")
         self.temp_dir = tempfile.TemporaryDirectory()
         tmp = Path(self.temp_dir.name).resolve()
         self.home = tmp / "home"
