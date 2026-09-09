@@ -13,9 +13,13 @@ Same contract as worktree-share.sh (read its header for the rationale):
     Setting WORKTREE_SHARE_NO_SYMLINK=1 simulates the missing privilege (used by the tests).
   - only items that exist in the main worktree, are untracked and are gitignored get shared; untracked-but-not-ignored
     items count as pending commits and are only reported.
-  - a directory that itself holds tracked files (repos/.gitkeep tracked, clones below it ignored) is expanded into its
-    ignored children.
-  - .claude/settings.local.json is never shared (Claude Code reads the main worktree's copy; it holds absolute paths).
+  - tool config directories (.claude / .codex / .agents / .gemini / .opencode / .cursor) are listed as whole directories:
+    a fully ignored one becomes one directory link (commands, hooks, skills, settings all visible through it); one that
+    holds tracked files, or is not ignored itself, is expanded into its ignored children (repos/.gitkeep works the same).
+  - a list entry may carry a wildcard (.env.*); it is expanded in the main worktree, each match handled as above.
+  - .claude/settings.local.json and .claude/worktrees are skipped silently during expansion (Claude Code reads the main
+    worktree's settings.local.json and it holds absolute paths, a copy would diverge; worktrees is Claude's own worktree
+    container). Listing them explicitly warns. Through a whole-directory link they are the same file, nothing diverges.
   - after each action the item is re-checked with git check-ignore; when a trailing-slash rule does not match the link,
     a line without the slash is appended to the shared .git/info/exclude (never to the team's .gitignore).
   - list = built-in list + .worktree-share at the repo root (one path per line, # comments, ! removes a built-in item;
@@ -32,9 +36,12 @@ $ErrorActionPreference = 'Stop'
 $Utf8 = New-Object Text.UTF8Encoding $false
 $IsWin = $env:OS -eq 'Windows_NT'
 
-$Builtin = @('CLAUDE.md', 'AGENTS.md', 'GEMINI.md', '.claude/settings.json', '.codex/config.toml', '.mcp.json', '.env',
-             '.memory', '.claude/skills', '.codex/skills', '.agents/skills', '.claude/agents')
-$Never = '.claude/settings.local.json'
+$Builtin = @('CLAUDE.md', 'AGENTS.md', 'GEMINI.md', '.mcp.json', 'opencode.json', '.env', '.env.*',
+             '.memory', '.claude', '.codex', '.agents', '.gemini', '.opencode', '.cursor')
+$Never = @('.claude/settings.local.json', '.claude/worktrees')
+# Directories whose own files may be copied one by one when a directory link cannot be created (static tool config).
+# .memory (single writer) and skills trees are NOT in this list: file-by-file copies of those would diverge.
+$CopyFallback = @('.claude', '.codex', '.agents', '.gemini', '.opencode', '.cursor')
 $Conf = '.worktree-share'
 $ExcludeMark = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('IyBhZ2VudC1tZW1vcnktc2V0dXDvvJp3b3JrdHJlZSDlhbHkuqvpobk='))
 $script:New = 0; $script:Kept = 0; $script:Warn = 0
@@ -147,7 +154,19 @@ function Share-One([string]$Root, [string]$Wt, [string]$Rel) {
     $isDir = Test-Path -LiteralPath $src -PathType Container
     if ($isDir) {
         if (-not (New-DirLink $dst $src)) {
-            Warn "$Rel is not shared: creating a symbolic link needs Developer Mode (Settings > For developers) or an elevated shell; enable one and re-run. A junction is not used because git worktree remove would delete the main worktree's files through it"
+            # No privilege for a directory link. A tool config directory falls back to its own files (copied one by one,
+            # $Never skipped; subdirectories stay unshared). Anything else (.memory, skills trees) is skipped entirely:
+            # file-by-file copies of those would diverge from the main worktree
+            if ($CopyFallback -contains $Rel) {
+                Warn "$Rel is not linked: creating a symbolic link needs Developer Mode (Settings > For developers) or an elevated shell; its files are copied instead and its subdirectories are skipped until you enable one and re-run. A junction is not used because git worktree remove would delete the main worktree's files through it"
+                foreach ($child in (Get-ChildItem -LiteralPath $src -Force -File | Sort-Object Name)) {
+                    $childRel = "$Rel/$($child.Name)"
+                    if ($Never -contains $childRel) { continue }
+                    Share-One $Root $Wt $childRel
+                }
+            } else {
+                Warn "$Rel is not shared: creating a symbolic link needs Developer Mode (Settings > For developers) or an elevated shell; enable one and re-run. A junction is not used because git worktree remove would delete the main worktree's files through it"
+            }
             return
         }
     } else { Copy-Item -LiteralPath $src -Destination $dst }
@@ -159,6 +178,55 @@ function Share-One([string]$Root, [string]$Wt, [string]$Rel) {
     if ($isDir) { Write-Host "* linked $Rel" } else { Write-Host "* copied $Rel" }
     $script:New++
 }
+# Expand one directory: share its ignored children (the !! lines), skip $Never silently, warn about untracked ones (?? lines)
+function Share-Children([string]$Root, [string]$Wt, [string]$Rel) {
+    $raw = (Invoke-Git $Root status --ignored=matching --porcelain -z --untracked-files=normal -- $Rel) -join ''
+    foreach ($entry in ($raw -split "`0")) {
+        if ($entry.StartsWith('!! ')) {
+            $child = $entry.Substring(3).TrimEnd('/')
+            if ($Never -contains $child) { continue }
+            Share-One $Root $Wt $child
+        } elseif ($entry.StartsWith('?? ')) {
+            Warn "$($entry.Substring(3).TrimEnd('/')) is untracked and not ignored, treated as a pending commit, not shared"
+        }
+    }
+}
+# One list entry: expand a wildcard in the main worktree first; a fully ignored directory becomes one link, any other
+# directory is expanded; a file is tracked (skip) / ignored (share) / pending (warn)
+function Share-Item([string]$Root, [string]$Wt, [string]$Rel) {
+    if ($Rel -match '[\*\?]') {
+        $dir = (Split-Path $Rel -Parent).Replace('\', '/'); $leaf = Split-Path $Rel -Leaf
+        $base = if ($dir) { Join-Path $Root $dir } else { $Root }
+        if (Test-Path -LiteralPath $base -PathType Container) {
+            foreach ($item in (Get-ChildItem -LiteralPath $base -Force | Where-Object { $_.Name -like $leaf } | Sort-Object Name)) {
+                $childRel = if ($dir) { "$dir/$($item.Name)" } else { $item.Name }
+                Share-Item $Root $Wt $childRel
+            }
+        }
+        return
+    }
+    if ($Never -contains $Rel) {
+        Warn "$Rel is not shared: Claude Code's own machine-local state (settings.local.json is read from the main worktree and holds absolute paths; worktrees is Claude's own worktree container)"
+        return
+    }
+    $srcPath = Join-Path $Root $Rel
+    if (-not (Test-Path -LiteralPath $srcPath) -and -not (Test-IsLink $srcPath)) { return }
+    $tracked = @(Invoke-Git $Root ls-files -- $Rel)
+    $isTracked = ($tracked.Count -gt 0 -and $tracked[0])
+    if ((Test-Path -LiteralPath $srcPath -PathType Container) -and -not (Test-IsLink $srcPath)) {
+        Invoke-Git $Root check-ignore -q -- $Rel | Out-Null
+        if (-not $isTracked -and $script:GitExit -eq 0) { Share-One $Root $Wt $Rel }   # whole directory untracked and ignored: one link
+        else { Share-Children $Root $Wt $Rel }                                          # holds tracked files, or not ignored itself: expand
+        return
+    }
+    if ($isTracked) { return }   # a tracked file: the checkout brings it
+    Invoke-Git $Root check-ignore -q -- $Rel | Out-Null
+    if ($script:GitExit -ne 0) {
+        Warn "$Rel is untracked and not ignored, treated as a pending commit, not shared"
+        return
+    }
+    Share-One $Root $Wt $Rel
+}
 function Invoke-Link([string]$Path) {
     $wt = Get-NormalizedPath $Path
     $root = Get-MainWorktree $wt
@@ -167,30 +235,7 @@ function Invoke-Link([string]$Path) {
         return
     }
     Write-Host "=== worktree sharing: $root -> $wt ==="
-    foreach ($rel in Build-List $root $wt) {
-        if ($rel -eq $Never) {
-            Warn "$rel is not shared: Claude Code reads the main worktree's copy, and it holds machine-local absolute paths"
-            continue
-        }
-        $srcPath = Join-Path $root $rel
-        if (-not (Test-Path -LiteralPath $srcPath) -and -not (Test-IsLink $srcPath)) { continue }
-        $tracked = @(Invoke-Git $root ls-files -- $rel)
-        if ($tracked.Count -gt 0 -and $tracked[0]) {
-            if (-not (Test-Path -LiteralPath $srcPath -PathType Container)) { continue }   # a tracked file: the checkout brings it
-            # a directory holding tracked files: expand into its ignored children (the !! lines)
-            $raw = (Invoke-Git $root status --ignored=matching --porcelain -z --untracked-files=normal -- $rel) -join ''
-            foreach ($entry in ($raw -split "`0")) {
-                if ($entry.StartsWith('!! ')) { Share-One $root $wt ($entry.Substring(3).TrimEnd('/')) }
-            }
-            continue
-        }
-        Invoke-Git $root check-ignore -q -- $rel | Out-Null
-        if ($script:GitExit -ne 0) {
-            Warn "$rel is untracked and not ignored, treated as a pending commit, not shared"
-            continue
-        }
-        Share-One $root $wt $rel
-    }
+    foreach ($rel in Build-List $root $wt) { Share-Item $root $wt $rel }
     Write-Host "+ new $($script:New), kept $($script:Kept), warnings $($script:Warn)"
 }
 

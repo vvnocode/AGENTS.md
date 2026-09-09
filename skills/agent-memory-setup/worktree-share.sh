@@ -9,8 +9,13 @@
 # 共享规则：
 # - 文件复制（内容静态、体积小，真实文件不受尾斜杠忽略规则影响）；目录软链（.memory 必须单一写入者，skills 只读）。
 # - 只共享「根工作区有、未入库、已被忽略」的项；未入库也未忽略的视为待提交，只告警不共享。
-# - 项本身含入库文件的目录（如 repos/.gitkeep 入库、其下克隆被忽略）：不整项共享，展开为其下被忽略的条目逐条共享。
-# - .claude/settings.local.json 永不共享：Claude Code 在 worktree 里直接读主工作区那份，且它含本机绝对路径。
+# - 工具配置目录（.claude / .codex / .agents / .gemini / .opencode / .cursor）按整目录列入清单：整目录被忽略就整目录软链，
+#   其下 commands、hooks、skills、settings 一并可见；目录含入库文件（如 .claude/skills 入库）或目录本身未被忽略（只有
+#   其下某些项被忽略）时，展开为其下被忽略的条目逐条共享。repos/.gitkeep 入库、其下克隆被忽略的情形同理。
+# - 清单项可带通配（.env.*）：在根工作区展开后逐项按上面规则处理。
+# - .claude/settings.local.json 与 .claude/worktrees 在展开时静默跳过：前者 Claude Code 在 worktree 里直接读主工作区那份，
+#   且含本机绝对路径，复制出去会分叉；后者是 Claude 自建 worktree 的容器。清单里显式写它们则告警。整目录软链 .claude 时两者
+#   随目录可见，那是同一份文件，不会分叉。
 # - 忽略规则带尾斜杠（如 .memory/）只匹配真实目录、不匹配软链：动作后用 check-ignore 复核，未被忽略就往仓库共用的
 #   .git/info/exclude 补一行不带尾斜杠的路径（对所有 worktree 生效），不碰团队的 .gitignore。
 #
@@ -21,8 +26,8 @@
 # 兼容 macOS 自带 bash 3.2：不用 mapfile、关联数组、${var,,}。
 set -euo pipefail
 
-BUILTIN="CLAUDE.md AGENTS.md GEMINI.md .claude/settings.json .codex/config.toml .mcp.json .env .memory .claude/skills .codex/skills .agents/skills .claude/agents"
-NEVER=".claude/settings.local.json"
+BUILTIN="CLAUDE.md AGENTS.md GEMINI.md .mcp.json opencode.json .env .env.* .memory .claude .codex .agents .gemini .opencode .cursor"
+NEVER=".claude/settings.local.json .claude/worktrees"
 CONF=".worktree-share"
 EXCLUDE_MARK="# agent-memory-setup：worktree 共享项"
 N_NEW=0; N_OK=0; N_WARN=0
@@ -50,7 +55,7 @@ read_conf() {
 # 最终清单：内置 + 两份配置的并集，再剔除 ! 项；去重后按行输出
 build_list() {
     local root=$1 wt=$2 line items removed=" "
-    items=$(printf '%s\n' $BUILTIN)
+    items=$(set -f; printf '%s\n' $BUILTIN)      # set -f：清单里的 .env.* 是给根工作区展开的，这里不能被当前目录展开
     while IFS= read -r line; do
         [ -n "$line" ] || continue
         case "$line" in
@@ -105,8 +110,52 @@ share_one() {
     N_NEW=$((N_NEW + 1))
 }
 
+is_never() { case " $NEVER " in *" $1 "*) return 0 ;; esac; return 1; }
+
+# 展开一个目录：其下被忽略的条目（!! 行）逐条共享，NEVER 项静默跳过；未入库也未忽略的条目（?? 行）告警
+share_children() {
+    local root=$1 wt=$2 rel=$3 entry
+    while IFS= read -r -d '' entry; do
+        case "$entry" in
+            '!! '*) entry=${entry#\!\! }; entry=${entry%/}; is_never "$entry" && continue; share_one "$root" "$wt" "$entry" ;;
+            '?? '*) entry=${entry#\?\? }; entry=${entry%/}; warn "$entry 未入库也未忽略，视为待提交，不共享" ;;
+        esac
+    done < <(git -C "$root" status --ignored=matching --porcelain -z --untracked-files=normal -- "$rel")
+}
+
+# 处理清单里的一项：通配先在根工作区展开；目录整体被忽略就整目录软链，否则展开；文件按入库 / 忽略 / 待提交三分
+share_item() {
+    local root=$1 wt=$2 rel=$3 f
+    case "$rel" in
+        *\**|*\?*)
+            while IFS= read -r f; do
+                [ -n "$f" ] && share_item "$root" "$wt" "$f"
+            done < <(cd "$root" && shopt -s nullglob dotglob && for f in $rel; do printf '%s\n' "$f"; done)
+            return 0 ;;
+    esac
+    if is_never "$rel"; then
+        warn "$rel 不共享：Claude Code 自身的本机状态（settings.local.json 由主工作区回读且含绝对路径；worktrees 是 Claude 自建 worktree 的容器）"
+        return 0
+    fi
+    { [ -e "$root/$rel" ] || [ -L "$root/$rel" ]; } || return 0
+    if [ -d "$root/$rel" ] && [ ! -L "$root/$rel" ]; then
+        if [ -z "$(git -C "$root" ls-files -- "$rel" | head -1)" ] && git -C "$root" check-ignore -q -- "$rel"; then
+            share_one "$root" "$wt" "$rel"          # 整目录未入库且被忽略：整目录软链
+        else
+            share_children "$root" "$wt" "$rel"     # 含入库文件，或目录本身未被忽略：展开其下被忽略的条目
+        fi
+        return 0
+    fi
+    [ -n "$(git -C "$root" ls-files -- "$rel" | head -1)" ] && return 0     # 入库文件：worktree 检出自带，不提
+    if ! git -C "$root" check-ignore -q -- "$rel"; then
+        warn "$rel 未入库也未忽略，视为待提交，不共享"
+        return 0
+    fi
+    share_one "$root" "$wt" "$rel"
+}
+
 do_link() {
-    local wt root rel entry
+    local wt root rel
     wt=$(realpath_of "$1")
     root=$(main_worktree_of "$wt")
     if [ "$wt" = "$root" ]; then
@@ -116,26 +165,7 @@ do_link() {
     echo "═══ worktree 共享：$root → $wt ═══"
     while IFS= read -r rel; do
         [ -n "$rel" ] || continue
-        if [ "$rel" = "$NEVER" ]; then
-            warn "$rel 不共享：Claude Code 直接读主工作区的这份，且内容含本机绝对路径"
-            continue
-        fi
-        { [ -e "$root/$rel" ] || [ -L "$root/$rel" ]; } || continue
-        if [ -n "$(git -C "$root" ls-files -- "$rel" | head -1)" ]; then
-            [ -d "$root/$rel" ] || continue           # 入库文件：worktree 检出自带，不提
-            # 前缀含入库文件的目录：展开其下被忽略的条目（!! 行），逐条共享
-            while IFS= read -r -d '' entry; do
-                case "$entry" in
-                    '!! '*) entry=${entry#\!\! }; entry=${entry%/}; share_one "$root" "$wt" "$entry" ;;
-                esac
-            done < <(git -C "$root" status --ignored=matching --porcelain -z --untracked-files=normal -- "$rel")
-            continue
-        fi
-        if ! git -C "$root" check-ignore -q -- "$rel"; then
-            warn "$rel 未入库也未忽略，视为待提交，不共享"
-            continue
-        fi
-        share_one "$root" "$wt" "$rel"
+        share_item "$root" "$wt" "$rel"
     done < <(build_list "$root" "$wt")
     echo "✓ 新建 ${N_NEW}，已就位 ${N_OK}，告警 ${N_WARN}"
 }

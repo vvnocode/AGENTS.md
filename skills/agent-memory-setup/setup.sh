@@ -177,9 +177,17 @@ fi
 # git worktree add 只检出入库文件，接线写下的本机文件（团队仓里的 CLAUDE.md / AGENTS.md、.codex/config.toml、项目级 skills、
 # 未入库的 .memory）在新 worktree 里全部缺失。钩子装在仓库共用的 hooks 目录，任何方式建的 worktree（git、Claude --worktree、
 # superpowers）都触发；模板见同目录 hooks/post-checkout，__SKILL_DIR__ 替换为本 skill 的绝对路径，Windows 上钩子按 $OSTYPE 分派到 .ps1。
-# 管道运行时 SCRIPT_DIR 无意义，按全局安装的托管位置兜底。
-SKILL_DIR="$SCRIPT_DIR"
-[ -n "$SKILL_DIR" ] && [ -f "$SKILL_DIR/worktree-share.sh" ] || SKILL_DIR="$HOME/.vvnocode/rules/skills/agent-memory-setup"
+# 钩子里烤进去的路径必须长期有效：优先全局 Skill 发现根 ~/.agents/skills/agent-memory-setup（两种安装方式都建它，且不随
+# 开发 clone 或临时 worktree 移动——在 worktree 里跑本脚本时 SCRIPT_DIR 就是 worktree 路径，worktree 删了钩子就失效）；
+# 其次脚本自身目录；管道运行时 SCRIPT_DIR 无意义，按托管位置兜底。
+GLOBAL_SKILL_DIR="$HOME/.agents/skills/agent-memory-setup"
+if [ -f "$GLOBAL_SKILL_DIR/worktree-share.sh" ]; then
+    SKILL_DIR="$GLOBAL_SKILL_DIR"
+elif [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/worktree-share.sh" ]; then
+    SKILL_DIR="$SCRIPT_DIR"
+else
+    SKILL_DIR="$HOME/.vvnocode/rules/skills/agent-memory-setup"
+fi
 HOOK_MARK='# agent-memory-setup post-checkout'
 HOOK_HINT="bash \"$SKILL_DIR/worktree-share.sh\" link \"\$PWD\" || true"
 if [ ! -f "$SKILL_DIR/worktree-share.sh" ]; then

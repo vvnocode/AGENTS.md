@@ -3,7 +3,10 @@
 
 覆盖：
 - 根工作区被忽略的项：文件成副本、目录成软链，worktree 内 git status 为空
-- .claude/settings.local.json 永不共享（Claude 原生回读主工作区），写进 .worktree-share 也不共享并告警
+- 工具配置目录（.claude / .codex / .agents / .gemini / .opencode / .cursor）整体被忽略时整目录软链，其下 commands、hooks、settings.local.json 全部经链接可见
+- 目录只有部分被忽略（如 .claude/skills 入库、.claude/commands 被忽略）：展开为其下被忽略的条目逐条共享
+- .claude/settings.local.json 与 .claude/worktrees 在展开时静默跳过；写进 .worktree-share 显式要求时不共享并告警
+- .env.* 通配：被忽略的 .env.local 成副本，入库的 .env.example 由检出自带
 - 未入库也未忽略的项：视为待提交，不共享，告警
 - 已入库的项：跳过、无输出，worktree 检出自带
 - 忽略规则带尾斜杠（.memory/）：软链后 .git/info/exclude 补一行 .memory，worktree 内 status 仍为空
@@ -126,8 +129,9 @@ class WorktreeShareTest(unittest.TestCase):
         self.assertEqual((wt / "AGENTS.md").read_text(encoding="utf-8"), "# 规则 XYZZY\n")
         self.assertFalse((wt / "AGENTS.md").is_symlink())
         self.assertEqual((wt / ".codex" / "config.toml").read_text(encoding="utf-8"), "[memories]\n")
+        self.assert_link_to(wt / ".codex", self.root / ".codex")          # .codex/ 整体被忽略：整目录软链
         self.assert_link_to(wt / ".memory", self.root / ".memory")
-        self.assert_link_to(wt / ".claude" / "skills", self.root / ".claude" / "skills")
+        self.assert_link_to(wt / ".claude" / "skills", self.root / ".claude" / "skills")   # .claude 只有 skills 被忽略：展开
         self.assertEqual(self.status(wt), "")
         self.assertIn(self.COPIED, proc.stdout)
         self.assertIn(self.LINKED, proc.stdout)
@@ -139,8 +143,68 @@ class WorktreeShareTest(unittest.TestCase):
         self.commit_all()
         self.write(".claude/settings.local.json", '{"autoMemoryDirectory": "x"}\n')
         wt = self.add_worktree("t2")
-        self.run_share(wt)
+        proc = self.run_share(wt)
         self.assertFalse((wt / ".claude" / "settings.local.json").exists())
+        # .claude 目录本身未被忽略、内容全是被忽略项：展开后静默跳过，不能报「待提交」
+        self.assertIn(self.summary(0, 0, 0), proc.stdout)
+
+    def test_whole_tool_dir_is_linked(self) -> None:
+        """.claude/ 整体被忽略：worktree 里 .claude 是指向根工作区的软链，commands、hooks、settings.local.json 全部经链接可见。"""
+        self.write(".gitignore", ".worktrees/\n.claude/\n")
+        self.commit_all()
+        self.write(".claude/commands/review.md", "# cmd\n")
+        self.write(".claude/hooks/pre.sh", "#!/bin/sh\n")
+        self.write(".claude/settings.local.json", "{}\n")
+        wt = self.add_worktree("d1")
+        proc = self.run_share(wt)
+        self.assert_link_to(wt / ".claude", self.root / ".claude")
+        self.assertTrue((wt / ".claude" / "commands" / "review.md").is_file())
+        self.assertTrue((wt / ".claude" / "hooks" / "pre.sh").is_file())
+        self.assertEqual(self.status(wt), "")
+        self.assertIn(self.summary(1, 0, 0), proc.stdout)
+
+    def test_env_glob_copies_ignored_variants(self) -> None:
+        """.env.* 通配：被忽略的 .env.local 成副本，入库的 .env.example 由检出自带，不告警。"""
+        self.write(".gitignore", ".worktrees/\n.env\n.env.*\n!.env.example\n")
+        self.write(".env.example", "KEY=\n")
+        self.commit_all()
+        self.write(".env", "KEY=1\n")
+        self.write(".env.local", "KEY=2\n")
+        wt = self.add_worktree("d2")
+        proc = self.run_share(wt)
+        self.assertEqual((wt / ".env").read_text(encoding="utf-8"), "KEY=1\n")
+        self.assertEqual((wt / ".env.local").read_text(encoding="utf-8"), "KEY=2\n")
+        self.assertFalse((wt / ".env.local").is_symlink())
+        self.assertEqual(self.status(wt), "")
+        self.assertIn(self.summary(2, 0, 0), proc.stdout)
+
+    def test_partially_tracked_tool_dir_expands_and_skips_never_items(self) -> None:
+        """.claude/skills 入库、其余被忽略：commands 成软链；settings.local.json 与 worktrees 静默跳过，不告警。"""
+        self.write(".gitignore", ".worktrees/\n.claude/settings.local.json\n.claude/worktrees/\n.claude/commands/\n")
+        self.write(".claude/skills/demo/SKILL.md", "---\nname: demo\n---\n")
+        self.commit_all()
+        self.write(".claude/settings.local.json", "{}\n")
+        self.write(".claude/worktrees/x/.git", "gitdir: nowhere\n")
+        self.write(".claude/commands/review.md", "# cmd\n")
+        wt = self.add_worktree("d3")
+        proc = self.run_share(wt)
+        self.assertTrue((wt / ".claude").is_dir() and not (wt / ".claude").is_symlink())
+        self.assert_link_to(wt / ".claude" / "commands", self.root / ".claude" / "commands")
+        self.assertFalse((wt / ".claude" / "settings.local.json").exists())
+        self.assertFalse(os.path.lexists(wt / ".claude" / "worktrees"))
+        self.assertEqual(self.status(wt), "")
+        self.assertIn(self.summary(1, 0, 0), proc.stdout)
+
+    def test_untracked_unignored_dir_is_warned_not_shared(self) -> None:
+        """.codex 未入库也未忽略（内容也不被忽略）：不共享，一条「待提交」告警。"""
+        self.write(".gitignore", ".worktrees/\n")
+        self.commit_all()
+        self.write(".codex/config.toml", "[memories]\n")
+        wt = self.add_worktree("d4")
+        proc = self.run_share(wt)
+        self.assertFalse(os.path.lexists(wt / ".codex"))
+        self.assertIn(self.PENDING, proc.stdout)
+        self.assertIn(self.summary(0, 0, 1), proc.stdout)
 
     def test_untracked_unignored_is_warned_not_shared(self) -> None:
         """AGENTS.md 未入库也未忽略：不共享，告警含「待提交」。"""
