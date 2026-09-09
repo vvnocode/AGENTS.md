@@ -61,6 +61,7 @@ powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\.agents\skills\agent-
 | 接线前建的 worktree | 没经过钩子，根工作区未入库的规则文件、`.memory`、项目级 skills、`.codex/config.toml` 都不在 | `git worktree add` 只检出入库文件：手动执行一次 `worktree-share.sh link <worktree路径>`（Windows 用 `.ps1`），见下节 |
 | 仓库设了 `core.hooksPath` 或已有别人的 `post-checkout` | setup 不覆盖，钩子没装，新 worktree 不共享 | 按 setup 输出的接入指引，在那份钩子的 flag=1 分支末尾追加一行调用 `worktree-share.sh` |
 | 团队仓里接线文件未入库也未忽略（`git status` 里是 `??`） | 脚本视为待提交、不共享，只告警 | 要么提交，要么写进仓库本地的 `.git/info/exclude`（不碰团队 `.gitignore`）再建 worktree |
+| Windows 没开开发者模式、也不是管理员 | 建不了目录符号链接，`.memory`、项目级 skills 不共享，脚本逐项告警 | 设置 → 开发者选项 → 开发者模式，或提权后重跑共享脚本。不要手工建目录联接顶上：git 2.37.3 实测 `git worktree remove` 会穿过联接删掉根工作区的内容；符号链接则安全（`git worktree remove`、`rm -rf`、`rmdir /s` 都只删链接） |
 | 规则只写在 Claude 那侧 | Codex / dsh / opencode 不知道 `.memory/` 存在，各写各的或不写 | 不能省：全局规则或 `--with-rule` 二选一 |
 | 全局规则只挂了部分工具 | 漏挂的工具（常见是 opencode 的 `~/.config/opencode/AGENTS.md`）永远读不到规则 | 按上表「用户级指令」四处逐一核对软链 |
 
@@ -69,7 +70,7 @@ powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\.agents\skills\agent-
 `git worktree add` 只检出入库文件。接线写下的本机文件（团队仓里不入库的 `CLAUDE.md` / `AGENTS.md`、`.codex/config.toml`、项目级 skills、未入库的 `.memory`）在新 worktree 里全部缺失，会话就在裸仓里跑。setup 第 7 步往仓库共用的 hooks 目录装 `post-checkout` 钩子，任何方式建的 worktree（`git worktree add`、Claude Code 的 `--worktree` / `EnterWorktree`、superpowers，仓内或仓外）都触发，由 `worktree-share.sh`（Windows：钩子按 `$OSTYPE` 分派到 `worktree-share.ps1`）把根工作区的本机资产共享进去。
 
 - **共享什么**：内置清单 `CLAUDE.md`、`AGENTS.md`、`GEMINI.md`、`.claude/settings.json`、`.codex/config.toml`、`.mcp.json`、`.env`、`.memory`、`.claude/skills`、`.codex/skills`、`.agents/skills`、`.claude/agents`。只共享「根工作区有、未入库、已被忽略」的项；已入库的检出自带，未忽略的视为待提交只告警。
-- **怎么共享**：文件复制，目录软链（`.memory` 必须只有一份，skills 只读）。Windows 目录先试符号链接，无特权退回目录联接。
+- **怎么共享**：文件复制，目录软链（`.memory` 必须只有一份，skills 只读）。Windows 目录只用符号链接（需开发者模式或管理员权限），建不出来则该目录不共享、只告警；不退回目录联接，见下表。
 - **不共享** `.claude/settings.local.json`：Claude Code v2.1.211 起在 worktree 里直接读主工作区那份，`autoMemoryDirectory` 与已授权限自动跟过来。Codex 没有这种回读，所以 `.codex/config.toml` 必须共享；Codex 的项目信任按主仓库判定，worktree 不用另登记。
 - **自定义**：仓根放 `.worktree-share`，一行一项，`#` 注释，`!` 前缀剔除内置项（如 `!.env`）。目录本身含入库文件（如 `repos/.gitkeep` 入库、其下克隆被忽略）时展开为其下被忽略的条目逐条共享。
 - **尾斜杠规则**：`.gitignore` 里 `.memory/` 这类带尾斜杠的规则只匹配真实目录、不匹配软链。脚本共享后复核，未被忽略就往仓库共用的 `.git/info/exclude` 补一行不带尾斜杠的路径，不碰团队 `.gitignore`。

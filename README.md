@@ -91,7 +91,7 @@ Windows：
 powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\.vvnocode\rules\skills\agent-memory-setup\setup.ps1" [仓库路径]
 ```
 
-脚本同时装一个 `post-checkout` 钩子：之后不管用 `git worktree add`、Claude Code 的 `--worktree` 还是别的工具建 worktree，根工作区被 gitignore 的本机资产（规则文件、`.memory`、项目级 skills 与 agents、`.codex/config.toml`、`.mcp.json`、`.env`）都会自动共享进去，worktree 里的会话与根工作区效果一致。文件复制、目录软链（Windows 无特权时退回目录联接）；仓根放 `.worktree-share` 可增删共享项。接线前建的 worktree 手动跑一次 `worktree-share.sh link <worktree路径>`。参数、验证方式与各工具的坑见 [skills/agent-memory-setup](./skills/agent-memory-setup/SKILL.md)。
+脚本同时装一个 `post-checkout` 钩子：之后不管用 `git worktree add`、Claude Code 的 `--worktree` 还是别的工具建 worktree，根工作区被 gitignore 的本机资产（规则文件、`.memory`、项目级 skills 与 agents、`.codex/config.toml`、`.mcp.json`、`.env`）都会自动共享进去，worktree 里的会话与根工作区效果一致。文件复制、目录软链（Windows 需开发者模式或管理员权限才能建目录符号链接，没有时目录项不共享只告警；不退回目录联接，因为 `git worktree remove` 会穿过联接删掉根工作区的内容）；仓根放 `.worktree-share` 可增删共享项。接线前建的 worktree 手动跑一次 `worktree-share.sh link <worktree路径>`。参数、验证方式与各工具的坑见 [skills/agent-memory-setup](./skills/agent-memory-setup/SKILL.md)。
 
 ## 两件套
 
@@ -176,7 +176,7 @@ git -C "$RULES_HOME" merge --ff-only origin/main
 └── tests/       # 安装、接线与 worktree 共享脚本的离线契约测试：python3 -m unittest discover -s tests
 ```
 
-`.ps1` 测试需要 `pwsh`（或 Windows PowerShell），没有则自动跳过；三个 Windows 专属用例（目录联接兜底、联接计已就位、删 worktree 不伤根工作区）只在 Windows 上运行。
+`.ps1` 测试需要 `pwsh`（或 Windows PowerShell），没有则自动跳过；三个 Windows 专属用例（钩子端到端、已有联接只告警、删 worktree 不伤根工作区）只在 Windows 上运行。Windows 上 `.sh` 套件整体跳过（`.sh` 不是 Windows 的支持路径）。
 
 无需额外维护 changelog 文档。历史变更由 Git 提交记录保存；长期有效的安装方式和兼容性结论维护在本 README 中。
 
