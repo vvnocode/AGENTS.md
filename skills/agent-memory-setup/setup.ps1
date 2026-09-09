@@ -221,10 +221,17 @@ cannot settle (AGENTS.md and CLAUDE.md both plain files with different content) 
         #    skills and an untracked .memory are all missing there. The hook lives in the repository's shared hooks directory,
         #    so every way of creating a worktree (git, Claude --worktree, superpowers) triggers it. The template is
         #    hooks/post-checkout next to this script; __SKILL_DIR__ becomes this skill's absolute path (forward slashes:
-        #    the hook is run by sh). Under irm | iex the script directory is unknown: fall back to the managed install location.
-        $SkillDir = $ScriptDir
-        if (-not $SkillDir -or -not (Test-Path (Join-Path $SkillDir 'worktree-share.sh') -PathType Leaf)) {
-            $userHome = if ($env:OS -eq 'Windows_NT') { $env:USERPROFILE } else { $HOME }
+        #    the hook is run by sh). The baked-in path must stay valid: prefer the global skill root
+        #    ~/.agents/skills/agent-memory-setup (both install modes create it, and it does not move with a dev clone or a
+        #    temporary worktree -- run from a worktree, $ScriptDir IS that worktree), then the script directory; under
+        #    irm | iex the script directory is unknown: fall back to the managed install location.
+        $userHome = if ($env:OS -eq 'Windows_NT') { $env:USERPROFILE } else { $HOME }
+        $GlobalSkillDir = Join-Path (Join-Path (Join-Path $userHome '.agents') 'skills') 'agent-memory-setup'
+        if (Test-Path (Join-Path $GlobalSkillDir 'worktree-share.sh') -PathType Leaf) {
+            $SkillDir = $GlobalSkillDir
+        } elseif ($ScriptDir -and (Test-Path (Join-Path $ScriptDir 'worktree-share.sh') -PathType Leaf)) {
+            $SkillDir = $ScriptDir
+        } else {
             $SkillDir = Join-Path (Join-Path (Join-Path (Join-Path $userHome '.vvnocode') 'rules') 'skills') 'agent-memory-setup'
         }
         $SkillDirFwd = $SkillDir.Replace('\', '/')

@@ -80,16 +80,18 @@ class SharePs1Test(bash_tests.WorktreeShareTest):
         return {**self.env(), "WORKTREE_SHARE_NO_SYMLINK": "1"}
 
     def test_no_symlink_privilege_skips_directories(self) -> None:
-        """无特权：文件照常复制，目录项不共享、每项一条告警并提示开开发者模式；不退回联接，worktree 内 status 为空。"""
+        """无特权：文件照常复制；目录项链不成时退回到目录自己的文件逐个复制（.codex/config.toml 仍到位）、子目录不共享，
+        每个目录一条告警并提示开开发者模式；不退回联接，worktree 内 status 为空。"""
         self.make_standard_fixture()
         wt = self.add_worktree("nopriv")
         proc = self.run_share(wt, env=self.no_symlink_privilege())
         self.assertEqual((wt / "AGENTS.md").read_text(encoding="utf-8"), "# 规则 XYZZY\n")
         self.assertEqual((wt / ".codex" / "config.toml").read_text(encoding="utf-8"), "[memories]\n")
+        self.assertFalse((wt / ".codex").is_symlink(), ".codex 链不成，应是真实目录里放副本")
         for rel in (".memory", ".claude/skills"):
             self.assertFalse(os.path.lexists(wt / rel), f"{rel} 不应以任何形式出现在 worktree 里")
         self.assertIn("Developer Mode", proc.stdout)
-        self.assertIn(self.summary(2, 0, 2), proc.stdout)
+        self.assertIn(self.summary(2, 0, 3), proc.stdout)     # 告警：.memory、.claude/skills、.codex 各一条
         self.assertEqual(self.status(wt), "")
 
     # ── Windows 专属 ──

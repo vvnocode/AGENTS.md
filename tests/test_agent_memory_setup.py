@@ -178,6 +178,19 @@ class AgentMemorySetupTest(unittest.TestCase):
         self.assertNotIn("__SKILL_DIR__", text)
         self.assertNotIn("\r\n", text, "钩子由 sh 执行，必须是 LF")
 
+    def test_hook_prefers_global_skill_root(self) -> None:
+        """本机 ~/.agents/skills/agent-memory-setup 存在：钩子写这个稳定路径，而不是脚本所在目录（脚本可能在临时 worktree 里）。"""
+        global_root = Path(self.temp_dir.name) / ".agents" / "skills"
+        global_root.mkdir(parents=True)
+        try:
+            os.symlink(SETUP.parent, global_root / "agent-memory-setup", target_is_directory=True)
+        except OSError as exc:      # Windows 无符号链接特权
+            self.skipTest(f"建不了目录符号链接：{exc}")
+        self.run_setup()
+        text = self.hook_path().read_text(encoding="utf-8").replace("\\", "/")
+        expected = (Path(self.temp_dir.name) / ".agents" / "skills" / "agent-memory-setup").as_posix()
+        self.assertIn(f'SKILL_DIR="{expected}"', text)
+
     def test_hook_rerun_unchanged(self) -> None:
         """重跑后钩子字节不变。"""
         self.run_setup()

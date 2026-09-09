@@ -91,7 +91,7 @@ Windows：
 powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\.vvnocode\rules\skills\agent-memory-setup\setup.ps1" [仓库路径]
 ```
 
-脚本同时装一个 `post-checkout` 钩子：之后不管用 `git worktree add`、Claude Code 的 `--worktree` 还是别的工具建 worktree，根工作区被 gitignore 的本机资产（规则文件、`.memory`、项目级 skills 与 agents、`.codex/config.toml`、`.mcp.json`、`.env`）都会自动共享进去，worktree 里的会话与根工作区效果一致。文件复制、目录软链（Windows 需开发者模式或管理员权限才能建目录符号链接，没有时目录项不共享只告警；不退回目录联接，因为 `git worktree remove` 会穿过联接删掉根工作区的内容）；仓根放 `.worktree-share` 可增删共享项。接线前建的 worktree 手动跑一次 `worktree-share.sh link <worktree路径>`。参数、验证方式与各工具的坑见 [skills/agent-memory-setup](./skills/agent-memory-setup/SKILL.md)。
+脚本同时装一个 `post-checkout` 钩子：之后不管用 `git worktree add`、Claude Code 的 `--worktree` 还是别的工具建 worktree，根工作区被 gitignore 的本机资产（规则文件、`.memory`、`.claude` / `.codex` / `.agents` / `.gemini` / `.opencode` / `.cursor` 整目录或其下被忽略的项、`.mcp.json`、`opencode.json`、`.env` 与 `.env.*`）都会自动共享进去，worktree 里的会话与根工作区效果一致。文件复制、目录软链（Windows 需开发者模式或管理员权限才能建目录符号链接，没有时目录项不共享只告警；不退回目录联接，因为 `git worktree remove` 会穿过联接删掉根工作区的内容）；仓根放 `.worktree-share` 可增删共享项。接线前建的 worktree 手动跑一次 `worktree-share.sh link <worktree路径>`。参数、验证方式与各工具的坑见 [skills/agent-memory-setup](./skills/agent-memory-setup/SKILL.md)。
 
 ## 两件套
 

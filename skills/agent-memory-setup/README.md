@@ -53,16 +53,16 @@ powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\.agents\skills\agent-
 
 ## worktree 共享
 
-setup 装的 `post-checkout` 钩子让之后建的每个 worktree 自动带上根工作区被忽略的本机资产（规则文件、`.memory`、项目级 skills 与 agents、`.codex/config.toml`、`.mcp.json`、`.env`）。接线前建的 worktree 手动跑一次：
+setup 装的 `post-checkout` 钩子让之后建的每个 worktree 自动带上根工作区被忽略的本机资产（规则文件、`.memory`、`.claude` / `.codex` / `.agents` / `.gemini` / `.opencode` / `.cursor` 整目录或其下被忽略的项、`.mcp.json`、`opencode.json`、`.env` 与 `.env.*`）。接线前建的 worktree 手动跑一次：
 
 ```bash
-~/.vvnocode/rules/skills/agent-memory-setup/worktree-share.sh link /path/to/worktree
+~/.agents/skills/agent-memory-setup/worktree-share.sh link /path/to/worktree
 ```
 
 Windows：
 
 ```powershell
-pwsh -File "$env:USERPROFILE\.vvnocode\rules\skills\agent-memory-setup\worktree-share.ps1" link C:\path\to\worktree
+pwsh -File "$env:USERPROFILE\.agents\skills\agent-memory-setup\worktree-share.ps1" link C:\path\to\worktree
 ```
 
 仓根放 `.worktree-share` 增删共享项（一行一项，`#` 注释，`!` 前缀剔除内置项）。机制与陷阱见 [SKILL.md](SKILL.md)「worktree 里效果不变」。

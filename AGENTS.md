@@ -14,7 +14,7 @@
 - 仅在 Git 仓库中应用本节。当前工具不能执行终端命令时，把需要执行的 git 操作写成命令交给用户，不要声称已完成。
 - 开发前检查仓库规范并同步基线：有规范或用户指定则按其执行；无规范且无歧义时从最新 `main` 创建开发分支；多个合理基线时先问。
 - 不在 `main`、`develop`、`release` 等长期分支上开发。独立任务用独立分支；同一任务跨会话沿用原分支，不按会话重复建分支。
-- 并行任务必须各用独立 worktree，放在已被 gitignore 的 `.worktrees/{任务名}/`；根工作区只用于长期分支和集成。接线过的仓库由 post-checkout 钩子把根工作区的本机资产（规则文件、`.memory`、项目级 skills 与 agents、Codex 配置、`.mcp.json`、`.env`）共享进新 worktree；建完后核对，缺失时执行 `bash ~/.vvnocode/rules/skills/agent-memory-setup/worktree-share.sh link {worktree路径}`（Windows 用同目录的 `worktree-share.ps1`）。
+- 并行任务必须各用独立 worktree，放在已被 gitignore 的 `.worktrees/{任务名}/`；根工作区只用于长期分支和集成。接线过的仓库由 post-checkout 钩子把根工作区未入库且被忽略的本机资产（规则文件、`.memory`、`.claude` / `.codex` / `.agents` / `.gemini` / `.opencode` / `.cursor` 整目录或其下被忽略的项、`.mcp.json`、`opencode.json`、`.env` 与 `.env.*`）共享进新 worktree；建完后核对，缺失时执行 `bash ~/.agents/skills/agent-memory-setup/worktree-share.sh link {worktree路径}`（Windows 用同目录的 `worktree-share.ps1`）。
 - 提交前执行 `git pull --rebase`（或 `git fetch && git rebase origin/{主干}`）。
 - 开发和验证完成后，提示用户确认合入目标分支（通常为 `main` 或 `release`）或暂不合并；未经确认不合并。
 - 合入长期分支必须保留 merge commit：本地使用 `git merge --no-ff`，平台选择 `Create a merge commit`；用户明确指定其他方式时除外。
