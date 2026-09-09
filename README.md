@@ -164,9 +164,7 @@ git -C "$RULES_HOME" merge --ff-only origin/main
 ```text
 .
 ├── .gitignore   # 本地配置、凭据和临时文件的忽略规则
-├── .memory/     # 本仓自己的跨会话记忆（按 AGENTS.md「项目记忆」节读写）
 ├── AGENTS.md    # 跨工具复用的唯一规则源
-├── docs/        # specs/ 与 plans/：影响后续开发的设计结论
 ├── install.sh   # 一键安装（macOS / Linux）：clone 到 ~/.vvnocode/rules，软链各规则入口与 skill
 ├── install.ps1  # 一键安装（Windows），纯 ASCII
 ├── LICENSE      # CC0 1.0 Universal 完整法律文本
