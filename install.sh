@@ -6,7 +6,7 @@
 #   ./install.sh                                   # 在本仓 clone 内运行：软链指向本仓，开发用
 #
 # 仓库来源按运行位置自动判定：
-#   仓外 / 管道运行：把仓库 clone 到 $RULES_REPO_DIR（缺省 ~/.vvnocode/rules，与 skills 仓 ~/.vvnocode/skills 同一约定），
+#   仓外 / 管道运行：把仓库 clone 到 $RULES_REPO_DIR（缺省 ~/.vvnocode/rules），
 #                    已存在则 git pull --ff-only；重跑同一条命令即更新，软链不用重做。RULES_REPO_URL 可改为 fork 地址。
 #                    README 早期写法把仓库放在 ${XDG_CONFIG_HOME:-~/.config}/vibe-coding-rules：新位置不存在而旧位置有副本时
 #                    自动搬过去，指向旧位置的入口链接重指到新位置。
@@ -20,6 +20,9 @@
 #   ${XDG_CONFIG_HOME:-~/.config}/opencode/AGENTS.md   OpenCode
 #   ${DSH_HOME:-~/.dsh}/AGENTS.md                      DeepSeek Harness
 # Cursor 的全局 User Rules 只能在设置界面粘贴，不在此列。
+#
+# 同时把本仓 skills/agent-memory-setup（单仓接线：一份指令、一份仓内记忆、worktree 共享钩子）软链到三处全局 Skill 发现根：
+#   ~/.agents/skills、~/.claude/skills、~/.codex/skills
 set -euo pipefail
 
 # 整个脚本体包进 main：curl | bash 时 bash 边读边执行，包成函数后必须读完整个脚本才开始执行，下载中断不会执行半截脚本。
@@ -90,7 +93,35 @@ main() {
             ln -s "$RULES" "$link"; ADDED=$((ADDED+1))
         fi
     done
-    echo "· 安装完成：新建 $ADDED 条，已就位 $KEPT 条，重指 $MOVED 条，告警 $WARN 条（规则源：${RULES}）"
+    # ── 软链 skill 到三处全局 Skill 发现根 ──
+    # ~/.agents/skills 是跨工具约定俗成位（dsh、opencode、Cline 等直接读）；Claude 与 Codex 只认自己的目录、不扫它，三处缺一不可。
+    # agent-memory-setup 原在 vvnocode/skills 仓，2026-09-08 并入本仓：指向旧托管位置（~/.vvnocode/skills）
+    # 或更早的 XDG 位置（vvnocode-skills）的链接重指到本仓；指向别处的只告警。
+    SKILL_SRC="$REPO/skills/agent-memory-setup"
+    OLD_SKILL_1="$HOME/.vvnocode/skills/skills/agent-memory-setup"
+    OLD_SKILL_2="${XDG_DATA_HOME:-$HOME/.local/share}/vvnocode-skills/skills/agent-memory-setup"
+    S_ADDED=0; S_KEPT=0; S_MOVED=0
+    for root in "$HOME/.agents/skills" "$HOME/.claude/skills" "$HOME/.codex/skills"; do
+        link="$root/agent-memory-setup"
+        mkdir -p "$root"
+        if [ -L "$link" ]; then
+            cur=$(readlink "$link")
+            if [ "$cur" = "$SKILL_SRC" ]; then
+                S_KEPT=$((S_KEPT+1))
+            elif [ "$cur" = "$OLD_SKILL_1" ] || [ "$cur" = "$OLD_SKILL_2" ]; then
+                rm "$link"; ln -s "$SKILL_SRC" "$link"; S_MOVED=$((S_MOVED+1))
+            else
+                echo "⚠ $link 已指向 ${cur}，未改动"; WARN=$((WARN+1))
+            fi
+        elif [ -e "$link" ]; then
+            echo "⚠ $link 已是普通目录，未改动：请确认后手动换成链接（ln -sfn \"$SKILL_SRC\" \"$link\"）"; WARN=$((WARN+1))
+        else
+            ln -s "$SKILL_SRC" "$link"; S_ADDED=$((S_ADDED+1))
+        fi
+    done
+    echo "· 安装完成：规则 新建 $ADDED 条，已就位 $KEPT 条，重指 $MOVED 条；skill 新建 $S_ADDED 条，已就位 $S_KEPT 条，重指 $S_MOVED 条；告警 $WARN 条（规则源：${RULES}）"
+    [ -d "$HOME/.vvnocode/skills" ] && echo "· 旧 skills 仓托管副本 $HOME/.vvnocode/skills 已无用，可手动删除"
+    echo "· 接线一个仓库：$SKILL_SRC/setup.sh [仓库路径]（Windows 用同目录 setup.ps1）"
     echo "· Cursor 的全局 User Rules 需在设置界面手工粘贴规则正文"
 }
 

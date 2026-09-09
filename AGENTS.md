@@ -14,7 +14,7 @@
 - 仅在 Git 仓库中应用本节。当前工具不能执行终端命令时，把需要执行的 git 操作写成命令交给用户，不要声称已完成。
 - 开发前检查仓库规范并同步基线：有规范或用户指定则按其执行；无规范且无歧义时从最新 `main` 创建开发分支；多个合理基线时先问。
 - 不在 `main`、`develop`、`release` 等长期分支上开发。独立任务用独立分支；同一任务跨会话沿用原分支，不按会话重复建分支。
-- 并行任务必须各用独立 worktree，放在已被 gitignore 的 `.worktrees/{任务名}/`；根工作区只用于长期分支和集成。
+- 并行任务必须各用独立 worktree，放在已被 gitignore 的 `.worktrees/{任务名}/`；根工作区只用于长期分支和集成。接线过的仓库由 post-checkout 钩子把根工作区的本机资产（规则文件、`.memory`、项目级 skills 与 agents、Codex 配置、`.mcp.json`、`.env`）共享进新 worktree；建完后核对，缺失时执行 `bash ~/.vvnocode/rules/skills/agent-memory-setup/worktree-share.sh link {worktree路径}`（Windows 用同目录的 `worktree-share.ps1`）。
 - 提交前执行 `git pull --rebase`（或 `git fetch && git rebase origin/{主干}`）。
 - 开发和验证完成后，提示用户确认合入目标分支（通常为 `main` 或 `release`）或暂不合并；未经确认不合并。
 - 合入长期分支必须保留 merge commit：本地使用 `git merge --no-ff`，平台选择 `Create a merge commit`；用户明确指定其他方式时除外。
@@ -30,7 +30,7 @@
 - 记忆记做事方式，不记事实结论：带推理链或被否方案的结论、排障根因、领域对象与机制不进 `.memory/`——本机存在 `~/.llm-wiki` 时按「四、全局知识工作台」写 wiki，否则进项目 `docs/`；`project` 类只放约束与状态。
 - 一条记忆一个 `.md`：frontmatter 含 `name`、`description`、`metadata.type`（`user` | `feedback` | `project` | `reference`）；正文一个事实，`feedback` / `project` 类附 **Why** 与 **How to apply**。索引 `MEMORY.md` 每条一行 `- [标题](文件.md) — 摘要`，不放正文。
 - 写入前先查已有条目：已覆盖就更新，不新建重复；发现错误的记忆直接删除。
-- 仓内没有 `.memory/` 时不自行创建；搭建与各工具接法见 skill `agent-memory-setup`。
+- 仓内没有 `.memory/` 时不自行创建；搭建与各工具接法见本规则仓的 `skills/agent-memory-setup`（安装后即 skill `agent-memory-setup`）。
 
 ---
 

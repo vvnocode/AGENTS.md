@@ -2,7 +2,7 @@
 
 一份可移植、可审查、可版本控制的 AI 编程协作规范。以单一 Markdown 文件为规则源，通过符号链接或项目级入口复用于 Claude Code、Codex、Gemini CLI、OpenCode、Cursor、DeepSeek Harness 等工具。
 
-[快速开始](#快速开始) · [支持矩阵](#支持矩阵) · [三件套](#三件套) · [项目级接入](#项目级接入) · [更新](#更新规则) · [参与贡献](#参与贡献) · [许可](#许可)
+[快速开始](#快速开始) · [支持矩阵](#支持矩阵) · [接线一个仓库](#接线一个仓库) · [两件套](#两件套) · [项目级接入](#项目级接入) · [更新](#更新规则) · [参与贡献](#参与贡献) · [许可](#许可)
 
 ## 项目定位
 
@@ -47,11 +47,11 @@
 
 “支持”表示目标工具能够读取对应入口中的 Markdown 规则，不表示不同工具会以完全相同的优先级、上下文预算或合并算法处理它。项目规则、目录级规则和组织托管规则可能覆盖本文件。
 
-「全局 Skill 发现根」列供 Skill 分发仓（如 [vvnocode/skills](https://github.com/vvnocode/skills)）挂载时参考：`~/.agents/skills/` 是跨工具约定俗成的 canonical 根，Cline、Dexto、Kimi、Warp、Zed 等只读它；Claude Code 与 Codex 不扫它、只认自己的目录。把一个 skill 软链到 `~/.agents/skills/`、`~/.claude/skills/`、`~/.codex/skills/` 三处即可覆盖上表已核验的工具。标「待核验」的格子尚未按实物核对，不要凭印象填写。本表是这三类路径的唯一正本，其他仓库只链接、不另维护。
+「全局 Skill 发现根」列供 Skill 挂载时参考（本仓 `install.sh` 就按它把 `skills/agent-memory-setup` 挂到三处）：`~/.agents/skills/` 是跨工具约定俗成的 canonical 根，Cline、Dexto、Kimi、Warp、Zed 等只读它；Claude Code 与 Codex 不扫它、只认自己的目录。把一个 skill 软链到 `~/.agents/skills/`、`~/.claude/skills/`、`~/.codex/skills/` 三处即可覆盖上表已核验的工具。标「待核验」的格子尚未按实物核对，不要凭印象填写。本表是这三类路径的唯一正本，其他仓库只链接、不另维护。
 
 ## 快速开始
 
-一条命令把仓库 clone 到 `~/.vvnocode/rules`，并把 `AGENTS.md` 软链到各工具的用户级规则入口（Claude Code、Codex、Gemini CLI、OpenCode、DeepSeek Harness）。幂等：重跑即更新，已存在的目标只告警不覆盖。
+一条命令把仓库 clone 到 `~/.vvnocode/rules`，把 `AGENTS.md` 软链到各工具的用户级规则入口（Claude Code、Codex、Gemini CLI、OpenCode、DeepSeek Harness），并把 `skills/agent-memory-setup` 软链到三处全局 Skill 发现根。幂等：重跑即更新，已存在的目标只告警不覆盖。
 
 **macOS / Linux**：
 
@@ -77,23 +77,32 @@ Windows 建文件软链需要开发者模式或管理员权限；没有时脚本
 
 Cursor 的全局 User Rules 通过设置界面维护，不是稳定的文件挂载入口。需要全局使用时，可将规则正文加入 Cursor User Rules；需要跟随项目版本控制时，使用下方的项目级接入方式。
 
-## 三件套
+## 接线一个仓库
 
-本仓是 vvnocode 三件套之一。三者各管一层、互相独立、安装顺序随意，缺任何一个另外两个照常工作：
+全局规则装好后，让某个仓库里的 Claude Code、Codex、dsh、OpenCode 共用一份指令（`AGENTS.md`，`CLAUDE.md` 只含一行 `@AGENTS.md`）与一份仓内记忆（`.memory/`），在仓库目录下执行：
+
+```bash
+~/.vvnocode/rules/skills/agent-memory-setup/setup.sh [仓库路径]
+```
+
+Windows：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\.vvnocode\rules\skills\agent-memory-setup\setup.ps1" [仓库路径]
+```
+
+脚本同时装一个 `post-checkout` 钩子：之后不管用 `git worktree add`、Claude Code 的 `--worktree` 还是别的工具建 worktree，根工作区被 gitignore 的本机资产（规则文件、`.memory`、项目级 skills 与 agents、`.codex/config.toml`、`.mcp.json`、`.env`）都会自动共享进去，worktree 里的会话与根工作区效果一致。文件复制、目录软链（Windows 需开发者模式或管理员权限才能建目录符号链接，没有时目录项不共享只告警；不退回目录联接，因为 `git worktree remove` 会穿过联接删掉根工作区的内容）；仓根放 `.worktree-share` 可增删共享项。接线前建的 worktree 手动跑一次 `worktree-share.sh link <worktree路径>`。参数、验证方式与各工具的坑见 [skills/agent-memory-setup](./skills/agent-memory-setup/SKILL.md)。
+
+## 两件套
+
+本仓是 vvnocode 两件套之一。两者各管一层、互相独立、安装顺序随意，缺任何一个另一个照常工作：
 
 | 仓库 | 管什么 | 装到哪 | 缺了会怎样 |
 |---|---|---|---|
-| [AGENTS.md](https://github.com/vvnocode/AGENTS.md)（本仓） | 跨工具全局规则，含「项目记忆」读写规则与 llm-wiki 路由段 | `~/.vvnocode/rules`，软链到各工具的用户级规则入口 | 记忆读写规则没人下发：接线时用 `setup.sh --with-rule` 写进仓内 `AGENTS.md`；llm-wiki 路由段手工粘贴 |
-| [skills](https://github.com/vvnocode/skills) | 可公开分发的 skill，含给任意仓库接线的 `agent-memory-setup` | `~/.vvnocode/skills`，软链到三处全局 Skill 发现根 | 仓库不接线，偏好走各工具自带记忆；llm-wiki 的 bootstrap 会自动补装 |
+| [AGENTS.md](https://github.com/vvnocode/AGENTS.md)（本仓） | 跨工具全局规则（含「项目记忆」读写规则与 llm-wiki 路由段），以及给任意仓库接线的 skill `agent-memory-setup`（一份指令、一份仓内记忆、worktree 共享钩子） | `~/.vvnocode/rules`：规则软链到各工具的用户级规则入口，skill 软链到三处全局 Skill 发现根 | 规则没人下发、仓库不接线：偏好走各工具自带记忆，worktree 里丢本机资产；llm-wiki 的 bootstrap 会自动补装 |
 | [llm-wiki](https://github.com/vvnocode/llm-wiki) | 个人知识工作台：跨项目的机制、决策、案例 | 目录自选，`~/.llm-wiki` 软链指过去。它是数据仓、可一机多实例，不进 `~/.vvnocode` | 规则里的「全局知识工作台」整段失效，不查不写 |
 
-运行时只有两处条件门把三者接起来：仓内有 `.memory/` 才读写记忆，本机有 `~/.llm-wiki` 才查写 wiki。装 skills 仓一行命令：
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/vvnocode/skills/main/install.sh | bash
-```
-
-llm-wiki 按其 README 或 `SETUP-FOR-AI.md` 部署。
+运行时只有两处条件门把两者接起来：仓内有 `.memory/` 才读写记忆，本机有 `~/.llm-wiki` 才查写 wiki。原第三件 [vvnocode/skills](https://github.com/vvnocode/skills) 只有 `agent-memory-setup` 一个 skill，2026-09-08 并入本仓后归档；重跑本仓安装命令会把指向旧位置的 skill 链接重指过来。llm-wiki 按其 README 或 `SETUP-FOR-AI.md` 部署。
 
 ## 项目级接入
 
@@ -123,7 +132,7 @@ ln -s "$RULES_FILE" "$PROJECT_ROOT/GEMINI.md"  # Gemini CLI
 
 如果项目已有规则文件，更稳妥的方式是摘取本仓库中的通用章节，或在工具支持导入语法时显式引用，而不是替换整个文件。
 
-记忆与指令是两回事：规则文件只约束「仓内 `.memory/` 存在时怎么读写」，不负责搭建。让 Claude Code、Codex、dsh、OpenCode 在同一仓库共用一份 `AGENTS.md` 与一份仓内记忆的接法（软链、`autoMemoryDirectory`、关闭 Codex 自带记忆、信任门禁），见 [vvnocode/skills](https://github.com/vvnocode/skills) 里的 `agent-memory-setup`，附一键脚本。
+记忆与指令是两回事：规则文件只约束「仓内 `.memory/` 存在时怎么读写」，不负责搭建。让 Claude Code、Codex、dsh、OpenCode 在同一仓库共用一份 `AGENTS.md` 与一份仓内记忆的接法（引用行、`autoMemoryDirectory`、关闭 Codex 自带记忆、信任门禁、worktree 共享钩子），见本仓 [skills/agent-memory-setup](./skills/agent-memory-setup/SKILL.md)，一键脚本见上文「接线一个仓库」。
 
 ## 更新规则
 
@@ -155,13 +164,19 @@ git -C "$RULES_HOME" merge --ff-only origin/main
 ```text
 .
 ├── .gitignore   # 本地配置、凭据和临时文件的忽略规则
+├── .memory/     # 本仓自己的跨会话记忆（按 AGENTS.md「项目记忆」节读写）
 ├── AGENTS.md    # 跨工具复用的唯一规则源
-├── install.sh   # 一键安装（macOS / Linux）：clone 到 ~/.vvnocode/rules 并软链各入口
+├── docs/        # specs/ 与 plans/：影响后续开发的设计结论
+├── install.sh   # 一键安装（macOS / Linux）：clone 到 ~/.vvnocode/rules，软链各规则入口与 skill
 ├── install.ps1  # 一键安装（Windows），纯 ASCII
 ├── LICENSE      # CC0 1.0 Universal 完整法律文本
 ├── README.md    # 安装、兼容性、维护和贡献说明
-└── tests/       # 两个安装脚本的离线契约测试：python3 -m unittest discover -s tests
+├── skills/
+│   └── agent-memory-setup/   # 单仓接线 skill：setup.sh/.ps1、worktree-share.sh/.ps1、post-checkout 钩子模板、Codex 探针
+└── tests/       # 安装、接线与 worktree 共享脚本的离线契约测试：python3 -m unittest discover -s tests
 ```
+
+`.ps1` 测试需要 `pwsh`（或 Windows PowerShell），没有则自动跳过；三个 Windows 专属用例（钩子端到端、已有联接只告警、删 worktree 不伤根工作区）只在 Windows 上运行。Windows 上 `.sh` 套件整体跳过（`.sh` 不是 Windows 的支持路径）。
 
 无需额外维护 changelog 文档。历史变更由 Git 提交记录保存；长期有效的安装方式和兼容性结论维护在本 README 中。
 

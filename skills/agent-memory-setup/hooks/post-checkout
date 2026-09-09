@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# agent-memory-setup post-checkout
+# git worktree add 检出完成后，把根工作区的本机资产共享进新 worktree（清单与规则见 worktree-share.sh）。
+# 本文件是模板：setup.sh / setup.ps1 把 __SKILL_DIR__ 替换为 skill 目录绝对路径后写进仓库的 hooks 目录。
+# 参数：<旧 HEAD> <新 HEAD> <flag>；flag=1 为分支检出（worktree add、checkout 分支），flag=0 为文件检出。
+# 只在「分支检出 且 当前是附属 worktree」时动作；根工作区的任何 checkout 直接返回。
+# 退出码不影响检出结果，始终返回 0，只把问题打印出来。
+[ "${3:-0}" = "1" ] || exit 0
+gitdir=$(cd "$(git rev-parse --git-dir)" && pwd -P)
+common=$(cd "$(git rev-parse --git-common-dir)" && pwd -P)
+[ "$gitdir" != "$common" ] || exit 0
+SKILL_DIR="__SKILL_DIR__"
+# Windows 上 git 钩子由 Git for Windows 自带的 sh 执行（$OSTYPE 为 msys），此时交给 PowerShell 版脚本；pwsh 优先，退回 powershell
+case "${OSTYPE:-}" in
+    msys*|cygwin*)
+        PS=$(command -v pwsh || command -v powershell)
+        SHARE="$SKILL_DIR/worktree-share.ps1"
+        RUN="$PS -NoProfile -ExecutionPolicy Bypass -File \"$SHARE\" link \"$PWD\"" ;;
+    *)
+        SHARE="$SKILL_DIR/worktree-share.sh"
+        RUN="bash \"$SHARE\" link \"$PWD\"" ;;
+esac
+if [ -f "$SHARE" ]; then
+    eval "$RUN" || echo "⚠ post-checkout：worktree 共享失败，可手动执行：$RUN"
+else
+    echo "⚠ post-checkout：未找到 $SHARE，请重跑全局安装后手动执行：$RUN"
+fi
+exit 0
