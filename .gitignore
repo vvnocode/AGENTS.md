@@ -42,3 +42,5 @@ tmp/
 temp/
 dist/
 build/
+# Claude 本机配置，含绝对路径，不入库（agent-memory-setup）
+.claude/settings.local.json
