@@ -19,6 +19,7 @@ Entries (each tool's own convention, see the README support matrix):
   overrides ~\.config), $env:DSH_HOME\AGENTS.md (default ~\.dsh). Cursor's global User Rules live in its settings UI.
 The skill skills\agent-memory-setup (per-repo wiring: one instruction file, one in-repo memory, the worktree sharing hook)
 is linked into the three global skill discovery roots ~\.agents\skills, ~\.claude\skills and ~\.codex\skills.
+A SessionStart hook running memory-sync is appended to ~\.claude\settings.json and ~\.codex\hooks.json (RULES_NO_HOOKS=1 skips it).
 
 File symbolic links on Windows need Developer Mode or admin rights. When creating one fails the file is copied instead and
 tagged with a trailing marker comment; rerunning this installer refreshes such copies after every update. A plain file
@@ -175,6 +176,51 @@ param()
             New-DirLink $link $SkillSrc
             $SAdded++
         }
+    }
+    # -- Global hooks: sync Codex memories into the current repo's .memory at session start --
+    #    Claude Code and Codex both have a SessionStart event and run command hooks with the session directory as cwd,
+    #    so the command takes no argument; the script finds the repo from cwd and exits silently where there is no .memory.
+    #    The command uses the stable ~/.agents/skills path (expanded now, so the Codex trust prompt shows the final command).
+    #    Only our own entry is appended (recognised by the substrings agent-memory-setup and memory-sync); everything else in
+    #    the file is kept; invalid JSON is reported and left alone. RULES_NO_HOOKS=1 skips this section.
+    function Add-Hook([string]$File, [string]$Event, [string]$Cmd) {
+        # returns 'ok' | 'kept' | 'warn'
+        $data = $null
+        if (Test-Path -LiteralPath $File -PathType Leaf) {
+            $raw = [IO.File]::ReadAllText($File, [Text.Encoding]::UTF8)
+            if ($raw.Trim()) {
+                try { $data = $raw | ConvertFrom-Json } catch { Write-Host "! $File is not valid JSON, left unchanged"; return 'warn' }
+            }
+        }
+        if ($null -eq $data) { $data = [pscustomobject]@{} }
+        if (-not ($data.PSObject.Properties.Name -contains 'hooks')) { $data | Add-Member -NotePropertyName hooks -NotePropertyValue ([pscustomobject]@{}) }
+        if (-not ($data.hooks.PSObject.Properties.Name -contains $Event)) { $data.hooks | Add-Member -NotePropertyName $Event -NotePropertyValue @() }
+        foreach ($g in @($data.hooks.$Event)) {
+            foreach ($h in @($g.hooks)) {
+                $c = [string]$h.command
+                if ($c.Contains('agent-memory-setup') -and $c.Contains('memory-sync')) { Write-Host "* $File already has the memory-sync hook"; return 'kept' }
+            }
+        }
+        $entry = [pscustomobject]@{ hooks = @([pscustomobject]@{ type = 'command'; command = $Cmd }) }
+        $data.hooks.$Event = @($data.hooks.$Event) + @($entry)
+        New-Item -ItemType Directory -Force (Split-Path $File -Parent) | Out-Null
+        [IO.File]::WriteAllText($File, (($data | ConvertTo-Json -Depth 20) + "`n"), $Utf8)
+        Write-Host "* wrote $File (hooks.$Event)"
+        return 'ok'
+    }
+    if ($env:RULES_NO_HOOKS -eq '1') {
+        Write-Host '* RULES_NO_HOOKS=1: global hooks skipped'
+    } else {
+        $syncDir = Join-Path (Join-Path (Join-Path $UserHome '.agents') 'skills') 'agent-memory-setup'
+        $HookCmd = if ($IsWin) { "powershell -NoProfile -ExecutionPolicy Bypass -File `"$syncDir\memory-sync.ps1`"" }
+                   else { "bash `"$syncDir/memory-sync.sh`" || true" }
+        foreach ($spec in @(
+            @{ File = (Join-Path (Join-Path $UserHome '.claude') 'settings.json'); Event = 'SessionStart' },
+            @{ File = (Join-Path (Join-Path $UserHome '.codex') 'hooks.json');     Event = 'SessionStart' })) {
+            Write-Host "* appending to $($spec.File) hooks.$($spec.Event): $HookCmd"
+            if ((Add-Hook $spec.File $spec.Event $HookCmd) -eq 'warn') { $Warn++ }
+        }
+        Write-Host '* Codex asks you to review and trust this hook definition on its next start; it runs only after that'
     }
     Write-Host "* done: rules added $Added, kept $Kept, repointed $Moved, copied $Copied; skill added $SAdded, kept $SKept, repointed $SMoved; warnings $Warn (rules: $Rules)"
     if (Test-Path (Join-Path (Join-Path $UserHome '.vvnocode') 'skills')) { Write-Host "* the old skills repo clone under ~\.vvnocode\skills is no longer used and can be deleted" }

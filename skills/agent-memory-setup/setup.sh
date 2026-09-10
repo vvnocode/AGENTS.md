@@ -121,34 +121,58 @@ else
     ok "已在 .gitignore 追加 .claude/settings.local.json"
 fi
 
-# ── 5) Codex：记忆目录不可配置（固定 $CODEX_HOME/memories），只能把它自带记忆整体关掉 ──
-CODEX_BLOCK='# 本项目的记忆统一存放在仓库内 .memory/，写入规则见 AGENTS.md。
-#
-# Codex 的记忆目录不可配置（固定为 $CODEX_HOME/memories），只能把它自带的记忆系统关掉：
-#   generate_memories = false  本目录的交互会话不再沉淀到仓库外
-#   use_memories      = false  不再注入 ~/.codex/memories 里的旧副本
-#   dedicated_tools   = false  收掉 list/read/search/add_ad_hoc_note（最后一个是写工具，不关会绕过前两项）
-#
-# 生效前提：本项目须在 ~/.codex/config.toml 里被标记为 trusted，否则整个 .codex/ 静默不加载。
-[memories]
-generate_memories = false
-use_memories = false
-dedicated_tools = false'
+# ── 5) Codex：自带记忆照常开启，属于本仓的部分由 memory-sync 同步回 .memory/ ──
+# 2026-09-09 之前的接线在这里写 [memories] 三项 false 把 Codex 记忆关掉，措辞有过几版。用户 2026-09-09 改变立场：工具记忆照常写
+# 默认路径，再按 cwd 同步进项目（memory-sync.sh）。旧块按结构识别：[memories] 节只含这三项 = false，且紧邻其前的注释块提到
+# .memory —— 满足即视为接线产物整块删除；其他 [memories] 视为用户手写，不动、只告警。
+CODEX_NOTE='# 本项目的记忆统一存放在仓库内 .memory/（agent-memory-setup）。
+# Codex 自带记忆照常开启；属于本仓库的部分由 memory-sync 同步为 .memory/codex-*.md，不在这里关闭。'
 mkdir -p .codex
 if [ ! -f .codex/config.toml ]; then
-    printf '%s\n' "$CODEX_BLOCK" > .codex/config.toml
-    ok "已写 .codex/config.toml"
-elif grep -q '^\[memories\]' .codex/config.toml; then
-    if grep -qE '^generate_memories *= *false' .codex/config.toml \
-        && grep -qE '^use_memories *= *false' .codex/config.toml \
-        && grep -qE '^dedicated_tools *= *false' .codex/config.toml; then
-        ok ".codex/config.toml 的 [memories] 三项已关"
-    else
-        warn ".codex/config.toml 已有 [memories] 节但三项未全为 false，未改动：请手工核对"
-    fi
+    printf '%s\n' "$CODEX_NOTE" > .codex/config.toml
+    ok "已写 .codex/config.toml（不关闭 Codex 记忆）"
 else
-    printf '\n%s\n' "$CODEX_BLOCK" >> .codex/config.toml
-    ok "已在 .codex/config.toml 追加 [memories] 节"
+    # 退出码：0 正常，2 = 含用户自定义 [memories]（shell 侧计入告警）
+    python3 - <<'PY' || warn ".codex/config.toml 含自定义 [memories] 节，未改动：Codex 记忆现由 memory-sync 同步，请自行决定是否恢复默认"
+import pathlib, re, sys
+path = pathlib.Path(".codex/config.toml")
+text = path.read_text(encoding="utf-8")
+lines = text.split("\n")
+heads = [i for i, l in enumerate(lines) if l.strip() == "[memories]"]
+if not heads:
+    print("· .codex/config.toml 无 [memories] 节，不改动")
+    sys.exit(0)
+i = heads[0]
+j = i + 1                                             # 节尾：下一个 [section] 或文件末
+while j < len(lines) and not lines[j].startswith("["):
+    j += 1
+allowed = re.compile(r"^\s*(generate_memories|use_memories|dedicated_tools)\s*=\s*false\s*$")
+found = set()
+for l in lines[i + 1:j]:
+    if not l.strip() or l.strip().startswith("#"):
+        continue
+    m = allowed.match(l)
+    if not m:
+        sys.exit(2)                                   # 节里有别的键：用户手写
+    found.add(m.group(1))
+k = i                                                 # 紧邻其前的连续注释块
+while k - 1 >= 0 and lines[k - 1].startswith("#"):
+    k -= 1
+if len(heads) > 1 or not found or ".memory" not in "\n".join(lines[k:i]):
+    sys.exit(2)
+new = "\n".join(lines[:k] + lines[j:]).rstrip("\n") + "\n"
+if new.strip():
+    path.write_text(new, encoding="utf-8")
+    print("· 已删除 .codex/config.toml 里旧接线写的 [memories] 关闭块")
+else:
+    path.unlink()
+    print("· 已删除只含旧关闭块的 .codex/config.toml")
+PY
+    # 只含旧块的文件被删后补一个注释文件，让下次重跑「已就位」
+    if [ ! -f .codex/config.toml ]; then
+        printf '%s\n' "$CODEX_NOTE" > .codex/config.toml
+        ok "已写 .codex/config.toml（不关闭 Codex 记忆）"
+    fi
 fi
 
 # ── 6) AGENTS.md 写死记忆规则（仅 --with-rule）：没有全局规则时，这是 Codex / dsh / opencode 侧唯一的约束手段 ──
@@ -223,6 +247,11 @@ else
     echo "Codex ：确认 trusted 后运行 curl -fsSL $RAW_BASE/codex-effective-config.py | python3 - \"$ROOT\""
 fi
 echo "dsh / opencode：在本目录开会话，问同一问题；它们读 AGENTS.md，答得出即生效"
+GLOBAL_CODEX_CFG="${CODEX_HOME:-$HOME/.codex}/config.toml"
+if [ ! -f "$GLOBAL_CODEX_CFG" ] || ! grep -qE '^[[:space:]]*memories[[:space:]]*=[[:space:]]*true' "$GLOBAL_CODEX_CFG"; then
+    echo "Codex 记忆：全局 $GLOBAL_CODEX_CFG 未见 [features] memories = true——Codex Memories 默认关闭（EEA / 英国 / 瑞士不可用），开启后 memory-sync 才有内容；本脚本不代开"
+fi
+echo "Codex 记忆：照常开启，属于本仓的部分由 $SKILL_DIR/memory-sync.sh 同步为 .memory/codex-*.md（会话开始由全局钩子触发；首次可手动执行一次）"
 echo "worktree：新建的 worktree 由钩子自动共享本机资产（规则文件、.memory、项目级 skills、Codex 配置）；接线前已有的 worktree 手动执行一次："
 echo "         bash \"$SKILL_DIR/worktree-share.sh\" link <worktree路径>（Windows：pwsh -File \"$SKILL_DIR/worktree-share.ps1\" link <worktree路径>）"
 [ "$WARN" -gt 0 ] && echo && echo "⚠ 共 $WARN 条告警，见上文，需人工处理"

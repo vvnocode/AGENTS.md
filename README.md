@@ -72,7 +72,8 @@ Windows 建文件软链需要开发者模式或管理员权限；没有时脚本
 - 托管 clone 在 `~/.vvnocode/rules`（Windows `%USERPROFILE%\.vvnocode\rules`）；环境变量 `RULES_REPO_DIR` 改位置，`RULES_REPO_URL` 改为 fork。按早期 README 装在 `~/.config/vibe-coding-rules` 的，重跑安装会自动搬过来并重指链接。
 - 入口已是你自己的规则文件，或指向别处的链接：只告警不动。先把自己的规则并入，再手动换成链接。
 - 在本仓 clone 内运行 `./install.sh`（Windows `powershell -ExecutionPolicy Bypass -File .\install.ps1`）：软链直接指向该 clone，不联网、不建托管副本，开发用。
-- 卸载：删掉各入口的软链，再删 `~/.vvnocode/rules`。
+- 向 `~/.claude/settings.json` 与 `~/.codex/hooks.json` 各追加一条 `SessionStart` 钩子：会话开始把 Codex 记忆里属于当前仓库的部分同步进仓内 `.memory/`（未接线的仓库静默跳过）。追加前打印内容，`RULES_NO_HOOKS=1` 跳过；Codex 首次启动会要求信任这条钩子。
+- 卸载：删掉各入口的软链、两处钩子里的 memory-sync 条目，再删 `~/.vvnocode/rules`。
 - 脚本纯 ASCII、提示为英文：Windows PowerShell 5.1 的 `irm` 不去 BOM，`-File` 又按本地代码页解码，两条路径同时成立只有纯 ASCII 一种写法。
 
 Cursor 的全局 User Rules 通过设置界面维护，不是稳定的文件挂载入口。需要全局使用时，可将规则正文加入 Cursor User Rules；需要跟随项目版本控制时，使用下方的项目级接入方式。
@@ -91,7 +92,7 @@ Windows：
 powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\.vvnocode\rules\skills\agent-memory-setup\setup.ps1" [仓库路径]
 ```
 
-脚本同时装一个 `post-checkout` 钩子：之后不管用 `git worktree add`、Claude Code 的 `--worktree` 还是别的工具建 worktree，根工作区被 gitignore 的本机资产（规则文件、`.memory`、`.claude` / `.codex` / `.agents` / `.gemini` / `.opencode` / `.cursor` 整目录或其下被忽略的项、`.mcp.json`、`opencode.json`、`.env` 与 `.env.*`）都会自动共享进去，worktree 里的会话与根工作区效果一致。文件复制、目录软链（Windows 需开发者模式或管理员权限才能建目录符号链接，没有时目录项不共享只告警；不退回目录联接，因为 `git worktree remove` 会穿过联接删掉根工作区的内容）；仓根放 `.worktree-share` 可增删共享项。接线前建的 worktree 手动跑一次 `worktree-share.sh link <worktree路径>`。参数、验证方式与各工具的坑见 [skills/agent-memory-setup](./skills/agent-memory-setup/SKILL.md)。
+脚本同时装一个 `post-checkout` 钩子：之后不管用 `git worktree add`、Claude Code 的 `--worktree` 还是别的工具建 worktree，根工作区被 gitignore 的本机资产（规则文件、`.memory`、`.claude` / `.codex` / `.agents` / `.gemini` / `.opencode` / `.cursor` 整目录或其下被忽略的项、`.mcp.json`、`opencode.json`、`.env` 与 `.env.*`）都会自动共享进去，worktree 里的会话与根工作区效果一致。文件复制、目录软链（Windows 需开发者模式或管理员权限才能建目录符号链接，没有时目录项不共享只告警；不退回目录联接，因为 `git worktree remove` 会穿过联接删掉根工作区的内容）；仓根放 `.worktree-share` 可增删共享项。接线前建的 worktree 手动跑一次 `worktree-share.sh link <worktree路径>`。Codex 自带记忆不关闭，属于该仓的部分由 `memory-sync` 同步为 `.memory/` 下与 Claude 自动记忆同形的条目。参数、验证方式与各工具的坑见 [skills/agent-memory-setup](./skills/agent-memory-setup/SKILL.md)。
 
 ## 两件套
 
@@ -99,7 +100,7 @@ powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\.vvnocode\rules\skill
 
 | 仓库 | 管什么 | 装到哪 | 缺了会怎样 |
 |---|---|---|---|
-| [AGENTS.md](https://github.com/vvnocode/AGENTS.md)（本仓） | 跨工具全局规则（含「项目记忆」读写规则与 llm-wiki 路由段），以及给任意仓库接线的 skill `agent-memory-setup`（一份指令、一份仓内记忆、worktree 共享钩子） | `~/.vvnocode/rules`：规则软链到各工具的用户级规则入口，skill 软链到三处全局 Skill 发现根 | 规则没人下发、仓库不接线：偏好走各工具自带记忆，worktree 里丢本机资产；llm-wiki 的 bootstrap 会自动补装 |
+| [AGENTS.md](https://github.com/vvnocode/AGENTS.md)（本仓） | 跨工具全局规则（含「项目记忆」读写规则与 llm-wiki 路由段），以及给任意仓库接线的 skill `agent-memory-setup`（一份指令、一份仓内记忆、worktree 共享钩子、工具记忆同步） | `~/.vvnocode/rules`：规则软链到各工具的用户级规则入口，skill 软链到三处全局 Skill 发现根 | 规则没人下发、仓库不接线：偏好走各工具自带记忆，worktree 里丢本机资产；llm-wiki 的 bootstrap 会自动补装 |
 | [llm-wiki](https://github.com/vvnocode/llm-wiki) | 个人知识工作台：跨项目的机制、决策、案例 | 目录自选，`~/.llm-wiki` 软链指过去。它是数据仓、可一机多实例，不进 `~/.vvnocode` | 规则里的「全局知识工作台」整段失效，不查不写 |
 
 运行时只有两处条件门把两者接起来：仓内有 `.memory/` 才读写记忆，本机有 `~/.llm-wiki` 才查写 wiki。原第三件 [vvnocode/skills](https://github.com/vvnocode/skills) 只有 `agent-memory-setup` 一个 skill，2026-09-08 并入本仓后归档；重跑本仓安装命令会把指向旧位置的 skill 链接重指过来。llm-wiki 按其 README 或 `SETUP-FOR-AI.md` 部署。
@@ -132,7 +133,7 @@ ln -s "$RULES_FILE" "$PROJECT_ROOT/GEMINI.md"  # Gemini CLI
 
 如果项目已有规则文件，更稳妥的方式是摘取本仓库中的通用章节，或在工具支持导入语法时显式引用，而不是替换整个文件。
 
-记忆与指令是两回事：规则文件只约束「仓内 `.memory/` 存在时怎么读写」，不负责搭建。让 Claude Code、Codex、dsh、OpenCode 在同一仓库共用一份 `AGENTS.md` 与一份仓内记忆的接法（引用行、`autoMemoryDirectory`、关闭 Codex 自带记忆、信任门禁、worktree 共享钩子），见本仓 [skills/agent-memory-setup](./skills/agent-memory-setup/SKILL.md)，一键脚本见上文「接线一个仓库」。
+记忆与指令是两回事：规则文件只约束「仓内 `.memory/` 存在时怎么读写」，不负责搭建。让 Claude Code、Codex、dsh、OpenCode 在同一仓库共用一份 `AGENTS.md` 与一份仓内记忆的接法（引用行、`autoMemoryDirectory`、Codex 记忆同步、信任门禁、worktree 共享钩子），见本仓 [skills/agent-memory-setup](./skills/agent-memory-setup/SKILL.md)，一键脚本见上文「接线一个仓库」。
 
 ## 更新规则
 

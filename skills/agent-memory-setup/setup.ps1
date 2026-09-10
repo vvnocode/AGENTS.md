@@ -58,7 +58,7 @@ param(
         AgentsSkeleton = 'IyBBR0VOVFMubWQKCumhueebruaMh+S7pOato+acrO+8m2BDTEFVREUubWRgIOWPquWQq+S4gOihjCBgQEFHRU5UUy5tZGAg5byV55So5pys5paH5Lu277yM5Lik6ICF5rC46L+c5ZCM5LiA5Lu944CCCg=='
         MemoryIndex    = 'IyDorrDlv4bntKLlvJUKCg=='
         GitignoreBlock = 'IyBDbGF1ZGUg5pys5py66YWN572u77yM5ZCr57ud5a+56Lev5b6E77yM5LiN5YWl5bqT77yIYWdlbnQtbWVtb3J5LXNldHVw77yJCi5jbGF1ZGUvc2V0dGluZ3MubG9jYWwuanNvbgo='
-        CodexBlock     = 'IyDmnKzpobnnm67nmoTorrDlv4bnu5/kuIDlrZjmlL7lnKjku5PlupPlhoUgLm1lbW9yeS/vvIzlhpnlhaXop4TliJnop4EgQUdFTlRTLm1k44CCCiMKIyBDb2RleCDnmoTorrDlv4bnm67lvZXkuI3lj6/phY3nva7vvIjlm7rlrprkuLogJENPREVYX0hPTUUvbWVtb3JpZXPvvInvvIzlj6rog73miorlroPoh6rluKbnmoTorrDlv4bns7vnu5/lhbPmjonvvJoKIyAgIGdlbmVyYXRlX21lbW9yaWVzID0gZmFsc2UgIOacrOebruW9leeahOS6pOS6kuS8muivneS4jeWGjeayiea3gOWIsOS7k+W6k+WklgojICAgdXNlX21lbW9yaWVzICAgICAgPSBmYWxzZSAg5LiN5YaN5rOo5YWlIH4vLmNvZGV4L21lbW9yaWVzIOmHjOeahOaXp+WJr+acrAojICAgZGVkaWNhdGVkX3Rvb2xzICAgPSBmYWxzZSAg5pS25o6JIGxpc3QvcmVhZC9zZWFyY2gvYWRkX2FkX2hvY19ub3Rl77yI5pyA5ZCO5LiA5Liq5piv5YaZ5bel5YW377yM5LiN5YWz5Lya57uV6L+H5YmN5Lik6aG577yJCiMKIyDnlJ/mlYjliY3mj5DvvJrmnKzpobnnm67pobvlnKggfi8uY29kZXgvY29uZmlnLnRvbWwg6YeM6KKr5qCH6K6w5Li6IHRydXN0ZWTvvIzlkKbliJnmlbTkuKogLmNvZGV4LyDpnZnpu5jkuI3liqDovb3jgIIKW21lbW9yaWVzXQpnZW5lcmF0ZV9tZW1vcmllcyA9IGZhbHNlCnVzZV9tZW1vcmllcyA9IGZhbHNlCmRlZGljYXRlZF90b29scyA9IGZhbHNlCg=='
+        CodexNote      = 'IyDmnKzpobnnm67nmoTorrDlv4bnu5/kuIDlrZjmlL7lnKjku5PlupPlhoUgLm1lbW9yeS/vvIhhZ2VudC1tZW1vcnktc2V0dXDvvInjgIIKIyBDb2RleCDoh6rluKborrDlv4bnhafluLjlvIDlkK/vvJvlsZ7kuo7mnKzku5PlupPnmoTpg6jliIbnlLEgbWVtb3J5LXN5bmMg5ZCM5q2l5Li6IC5tZW1vcnkvY29kZXgtKi5tZO+8jOS4jeWcqOi/memHjOWFs+mXreOAggo='
         RuleSection    = 'CiMjIOmhueebruiusOW/hu+8iOaJgOaciSBBZ2VudCDlhbHnlKjvvIkKCuacrOmhueebrueahOi3qOS8muivneiusOW/huS4gOW+i+WtmOWcqOS7k+WGhSBgLm1lbW9yeS9g77yM6ZqP5Luj56CB5o+Q5Lqk77yb5LiN5L2/55So5ZCE5bel5YW36Ieq5bim55qE5LuT5aSW6K6w5b+G44CCCgotIOS8muivneW8gOWni+WFiOivuyBgLm1lbW9yeS9NRU1PUlkubWRgIOe0ouW8le+8jOWRveS4reWGjeivu+WvueW6lOadoeebru+8m+e0ouW8leavj+adoeS4gOihjO+8mmAtIFvmoIfpophdKOaWh+S7ti5tZCkg4oCUIOaRmOimgWDjgIIKLSDlj6rorrDmjaLkuKrkvJror53ku43mnInnlKjjgIHkuJTku6PnoIHkuI4gR2l0IOWOhuWPsuivu+S4jeWHuuadpeeahOS6i++8mueUqOaIt+WBj+WlveOAgee6oOato+i/h+eahOWBmuazleOAgeWklumDqOi1hOa6kOaMh+mSiOOAgemdnuaYvueEtue6puadn+OAguS4jeiusOS7o+eggee7k+aehOOAgeW3suS/rueahCBidWfjgIHmnKzmrKHkvJror53nmoTkuLTml7bnu5PorrrjgIIKLSDkuIDmnaHorrDlv4bkuIDkuKogYC5tZGDvvJpmcm9udG1hdHRlciDlkKsgYG5hbWVg77yI55+t5qiq57q/IHNsdWfvvInjgIFgZGVzY3JpcHRpb25g77yI5LiA5Y+l6K+d77yM5L6b5Yik5pat55u45YWz5oCn77yJ44CBYG1ldGFkYXRhLnR5cGVg77yIYHVzZXJgIHwgYGZlZWRiYWNrYCB8IGBwcm9qZWN0YCB8IGByZWZlcmVuY2Vg77yJ77yb5q2j5paH5LiA5Liq5LqL5a6e77yMYGZlZWRiYWNrYCAvIGBwcm9qZWN0YCDnsbvpmYQgKipXaHkqKiDkuI4gKipIb3cgdG8gYXBwbHkqKuOAggotIOWGmeWFpeWJjeWFiOafpeW3suacieadoeebru+8muW3suimhuebluWwseabtOaWsO+8jOS4jeaWsOW7uumHjeWkje+8m+WPkeeOsOmUmeivr+eahOiusOW/huebtOaOpeWIoOmZpOOAggo='
     }
 
@@ -186,22 +186,46 @@ cannot settle (AGENTS.md and CLAUDE.md both plain files with different content) 
             Ok "appended $entry to .gitignore"
         }
 
-        # -- 5) Codex: its memory directory is fixed ($CODEX_HOME/memories), so its built-in memory is switched off entirely --
+        # -- 5) Codex: its built-in memory stays ON; what belongs to this repo is synced back into .memory/ by memory-sync --
+        #    Setups before 2026-09-09 wrote a [memories] block with the three switches false (several wordings). Such a block is
+        #    recognised by structure: a [memories] section holding nothing but those keys = false, directly preceded by a comment
+        #    block mentioning .memory -- then it is removed as a whole. Any other [memories] section is left alone with a warning.
         New-Item -ItemType Directory -Force '.codex' | Out-Null
         $tomlPath = '.codex/config.toml'
-        if (-not (Test-Path $tomlPath -PathType Leaf)) {
-            Write-File $tomlPath (Get-Text $B64.CodexBlock); Ok "wrote $tomlPath"
-        } else {
-            $toml = Read-File $tomlPath
-            if ($toml -match '(?m)^\[memories\]') {
-                if (($toml -match '(?m)^generate_memories *= *false') -and ($toml -match '(?m)^use_memories *= *false') -and ($toml -match '(?m)^dedicated_tools *= *false')) {
-                    Ok "$tomlPath [memories] already has all three switches off"
-                } else {
-                    Warn "$tomlPath has a [memories] section but not all three switches are false, left unchanged: check it by hand"
-                }
+        if (Test-Path $tomlPath -PathType Leaf) {
+            $lines = @((Read-File $tomlPath) -split "`n")
+            $heads = @(0..($lines.Count - 1) | Where-Object { $lines[$_].Trim() -eq '[memories]' })
+            if ($heads.Count -eq 0) {
+                Ok "$tomlPath has no [memories] section, unchanged"
             } else {
-                Write-File $tomlPath ($toml + "`n" + (Get-Text $B64.CodexBlock)); Ok "appended [memories] to $tomlPath"
+                $i = $heads[0]; $j = $i + 1
+                while ($j -lt $lines.Count -and -not $lines[$j].StartsWith('[')) { $j++ }
+                $legacy = ($heads.Count -eq 1); $found = 0
+                foreach ($l in $lines[($i + 1)..($j - 1)]) {
+                    if ($j -le $i + 1) { break }
+                    $t = $l.Trim()
+                    if (-not $t -or $t.StartsWith('#')) { continue }
+                    if ($t -match '^(generate_memories|use_memories|dedicated_tools)\s*=\s*false$') { $found++ } else { $legacy = $false }
+                }
+                $k = $i
+                while ($k - 1 -ge 0 -and $lines[$k - 1].StartsWith('#')) { $k-- }
+                $comment = if ($k -lt $i) { ($lines[$k..($i - 1)]) -join "`n" } else { '' }
+                if ($legacy -and $found -gt 0 -and $comment.Contains('.memory')) {
+                    # explicit list, and NOT named $rest: the script's own [string[]]$Rest parameter would capture it (names are
+                    # case-insensitive) and turn the text into an array that a [string] parameter joins with spaces
+                    $keep = New-Object System.Collections.Generic.List[string]
+                    for ($x = 0; $x -lt $k; $x++) { $keep.Add($lines[$x]) }
+                    for ($x = $j; $x -lt $lines.Count; $x++) { $keep.Add($lines[$x]) }
+                    $keptText = ([string]::Join("`n", $keep)).TrimEnd("`r", "`n")
+                    if ($keptText.Trim()) { Write-File $tomlPath ($keptText + "`n"); Ok "removed the legacy [memories] off-switch block from $tomlPath" }
+                    else { Remove-Item -LiteralPath $tomlPath -Force; Ok "removed $tomlPath (it held only the legacy off-switch block)" }
+                } else {
+                    Warn "$tomlPath has a custom [memories] section, left unchanged: Codex memories are now synced by memory-sync, decide yourself whether to restore the defaults"
+                }
             }
+        }
+        if (-not (Test-Path $tomlPath -PathType Leaf)) {
+            Write-File $tomlPath (Get-Text $B64.CodexNote); Ok "wrote $tomlPath (Codex memory not switched off)"
         }
 
         # -- 6) Memory rules inside AGENTS.md (only with -WithRule): without a global rule set this is the only lever for
@@ -285,6 +309,13 @@ cannot settle (AGENTS.md and CLAUDE.md both plain files with different content) 
         Write-Host "Codex: once trusted, run: irm $RawBase/codex-effective-config.py -OutFile `"`$env:TEMP\codex-effective-config.py`"; python `"`$env:TEMP\codex-effective-config.py`" `"$Root`""
     }
     Write-Host 'dsh / opencode: open a session here and ask the same question; they read AGENTS.md'
+    $codexHome = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $userHome '.codex' }
+    $globalCfg = Join-Path $codexHome 'config.toml'
+    $featureOn = (Test-Path -LiteralPath $globalCfg -PathType Leaf) -and ((Read-File $globalCfg) -match '(?m)^\s*memories\s*=\s*true')
+    if (-not $featureOn) {
+        Write-Host "Codex memory: $globalCfg has no [features] memories = true -- Codex Memories are off by default (unavailable in the EEA / UK / Switzerland); memory-sync has nothing to sync until you turn it on. This script does not enable it"
+    }
+    Write-Host "Codex memory: stays on; entries belonging to this repo are synced into .memory/codex-*.md by $SkillDir\memory-sync.ps1 (a global hook runs it at session start; run it once by hand to sync existing memories)"
     Write-Host 'worktree: new worktrees get the machine-local assets (rule files, .memory, project skills, Codex config) through the hook; for worktrees created before this setup run once:'
     Write-Host "         pwsh -File `"$SkillDir\worktree-share.ps1`" link <worktree path>   (macOS / Linux: bash `"$SkillDir/worktree-share.sh`" link <worktree path>)"
     if ($Warn -gt 0) { Write-Host ''; Write-Host "! $Warn warning(s) above need a human" }

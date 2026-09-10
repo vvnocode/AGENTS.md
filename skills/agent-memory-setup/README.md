@@ -21,7 +21,13 @@ curl -fsSL https://raw.githubusercontent.com/vvnocode/AGENTS.md/main/skills/agen
 | `仓库路径` | 缺省为当前所在 git 仓库根 |
 | `--with-rule` | 往 `AGENTS.md` 追加「项目记忆」节。装了跨工具全局规则（如 [vvnocode/AGENTS.md](https://github.com/vvnocode/AGENTS.md) 的「项目记忆」节）的机器不需要；只给没有全局规则的协作者用的仓库才加 |
 
-幂等：只补缺不覆盖；不能自动裁定的冲突只告警交人工。跑完按输出做两件人工事：往 `~/.codex/config.toml` 追加信任片段（用 Codex 才需要），再逐工具验证。
+幂等：只补缺不覆盖；不能自动裁定的冲突只告警交人工。跑完按输出做两件人工事：往 `~/.codex/config.toml` 追加信任片段（用 Codex 才需要），再逐工具验证。Codex 自带记忆不关闭，属于本仓的部分由 `memory-sync` 同步为 `.memory/` 下与 Claude 自动记忆同形的条目；首次可手动跑一次立即同步已有记忆：
+
+```bash
+~/.agents/skills/agent-memory-setup/memory-sync.sh [仓库路径]
+```
+
+Windows：`pwsh -File "$env:USERPROFILE\.agents\skills\agent-memory-setup\memory-sync.ps1" [仓库路径]`。之后由全局安装写下的 Claude 与 Codex `SessionStart` 钩子自动触发；机制与不做的事见 [SKILL.md](SKILL.md)「工具记忆同步」。
 
 已用根目录 `install.sh` 装好本 skill 的机器，也可直接运行本地副本：
 
