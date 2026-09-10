@@ -11,6 +11,7 @@
 """
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -117,6 +118,58 @@ class InstallTest(unittest.TestCase):
             actual = link_target(link)
             self.assertIsNotNone(actual, f"{link} 应为链接")
             self.assertEqual(os.path.normcase(actual), os.path.normcase(str(target)), rel)
+
+    # ── 全局钩子 ──
+    def claude_settings(self) -> Path:
+        return self.home / ".claude" / "settings.json"
+
+    def codex_hooks(self) -> Path:
+        return self.home / ".codex" / "hooks.json"
+
+    def hook_commands(self, path: Path, event: str) -> list[str]:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return [h["command"] for grp in data["hooks"][event] for h in grp["hooks"]]
+
+    def test_piped_installs_two_global_hooks(self) -> None:
+        """全局安装写 Claude SessionStart 与 Codex SessionStart 各一条 memory-sync 钩子，并打印改了哪两个文件。"""
+        self.make_origin()
+        proc = self.run_piped()
+        claude = self.hook_commands(self.claude_settings(), "SessionStart")
+        codex = self.hook_commands(self.codex_hooks(), "SessionStart")
+        self.assertEqual(len([c for c in claude if "agent-memory-setup" in c and "memory-sync" in c]), 1, claude)
+        self.assertEqual(len([c for c in codex if "agent-memory-setup" in c and "memory-sync" in c]), 1, codex)
+        self.assertIn("settings.json", proc.stdout)
+        self.assertIn("hooks.json", proc.stdout)
+
+    def test_hooks_are_merged_not_overwritten_and_idempotent(self) -> None:
+        self.make_origin()
+        self.claude_settings().parent.mkdir(parents=True)
+        self.claude_settings().write_text(json.dumps({
+            "theme": "dark",
+            "hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": "echo mine"}]}]},
+        }), encoding="utf-8")
+        self.run_piped()
+        data = json.loads(self.claude_settings().read_text(encoding="utf-8"))
+        self.assertEqual(data["theme"], "dark")
+        self.assertIn("echo mine", self.hook_commands(self.claude_settings(), "SessionStart"))
+        before = (self.claude_settings().read_bytes(), self.codex_hooks().read_bytes())
+        self.run_piped()
+        self.assertEqual(before, (self.claude_settings().read_bytes(), self.codex_hooks().read_bytes()))
+
+    def test_rules_no_hooks_skips(self) -> None:
+        self.make_origin()
+        self.run_piped({**self.env(), "RULES_NO_HOOKS": "1"})
+        self.assertFalse(self.claude_settings().exists())
+        self.assertFalse(self.codex_hooks().exists())
+
+    def test_invalid_json_is_left_alone_with_warning(self) -> None:
+        self.make_origin()
+        self.claude_settings().parent.mkdir(parents=True)
+        self.claude_settings().write_text("{not json", encoding="utf-8")
+        proc = self.run_piped()
+        self.assertEqual(self.claude_settings().read_text(encoding="utf-8"), "{not json")
+        self.assertIn(self.WARN_MARK, proc.stdout)
+        self.assertTrue(self.codex_hooks().exists(), "另一处不受影响")
 
     # ── 用例 ──
     def test_piped_clones_and_links(self) -> None:

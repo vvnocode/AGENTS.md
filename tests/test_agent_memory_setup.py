@@ -3,7 +3,8 @@
 
 覆盖：
 - 全新仓库一跑到位：CLAUDE.md 只含一行 @AGENTS.md 引用、.memory/MEMORY.md、.claude/settings.local.json 指向仓内 .memory、
-  .gitignore 忽略 settings.local.json、.codex/config.toml 三项记忆开关全关；默认不往 AGENTS.md 写记忆节（全局规则承担）
+  .gitignore 忽略 settings.local.json、.codex/config.toml 不再关 Codex 记忆（由 memory-sync 同步回 .memory）；默认不往 AGENTS.md 写记忆节（全局规则承担）
+- 旧接线写的 [memories] 三 false 块被整块删除；用户自定义 [memories] 保留并告警；全局 features.memories 未开只提示不代开
 - 重跑幂等：第二次运行后所有产物字节不变
 - 只有 CLAUDE.md 的仓库：改名为 AGENTS.md 并写引用行，正文不丢
 - 旧做法留下的 CLAUDE.md -> AGENTS.md 软链：自动改为引用行（普通文件）
@@ -90,9 +91,9 @@ class AgentMemorySetupTest(unittest.TestCase):
         )
         self.assertEqual(ignored.returncode, 0, ".claude/settings.local.json 必须被 gitignore")
 
-        toml = (self.repo / ".codex" / "config.toml").read_text()
-        for key in ("generate_memories", "use_memories", "dedicated_tools"):
-            self.assertRegex(toml, rf"{key}\s*=\s*false")
+        toml = (self.repo / ".codex" / "config.toml").read_text(encoding="utf-8")
+        self.assertNotIn("[memories]", toml, "Codex 记忆不再关闭")
+        self.assertIn("memory-sync", toml)
 
         # 默认不写仓内记忆节：读写规则由全局规则仓承担，避免每仓一份重复
         self.assertNotIn("项目记忆", (self.repo / "AGENTS.md").read_text())
@@ -155,6 +156,66 @@ class AgentMemorySetupTest(unittest.TestCase):
         self.assertIn("MEMORY.md", agents)
         self.run_setup("--with-rule")
         self.assertEqual(agents, (self.repo / "AGENTS.md").read_text())
+
+    # ── 第 5 步：Codex 记忆不再关闭 ──
+    LEGACY_BLOCK = subprocess.run(
+        ["git", "-C", str(ROOT), "show", "51ef95d:skills/agent-memory-setup/setup.sh"],
+        capture_output=True, text=True, check=True,
+    ).stdout.split("CODEX_BLOCK='")[1].split("'\n")[0] + "\n"    # 2026-09-09 版接线写进 .codex/config.toml 的原文
+
+    def test_legacy_disable_block_is_removed(self) -> None:
+        """旧接线写的三 false 块：整块删除，其他内容不动，重跑幂等。"""
+        cfg = self.repo / ".codex" / "config.toml"
+        cfg.parent.mkdir()
+        cfg.write_text("# 用户自己的注释\nfoo = 1\n\n" + self.LEGACY_BLOCK, encoding="utf-8")
+        self.run_setup()
+        self.assertEqual(cfg.read_text(encoding="utf-8").strip(), "# 用户自己的注释\nfoo = 1")
+        before = cfg.read_bytes()
+        self.run_setup()
+        self.assertEqual(before, cfg.read_bytes())
+
+    LEGACY_VARIANT = (   # 2026-09-08 之前 skills 仓版本写的措辞（本机规则仓自身接线时留下的实物）
+        "# 本项目的记忆统一存放在仓库内 .memory/，写入规则见全局规则仓 AGENTS.md 的「项目记忆」节。\n"
+        "# Codex 的记忆目录不可配置（固定 $CODEX_HOME/memories），只能把它自带的记忆系统整体关掉。\n"
+        "[memories]\ngenerate_memories = false\nuse_memories = false\ndedicated_tools = false\n"
+    )
+
+    def test_legacy_variant_block_is_removed_by_structure(self) -> None:
+        """措辞不同的旧关闭块：[memories] 节只含三项 false、前面的注释提到 .memory/ 即视为接线产物，整块删除。"""
+        cfg = self.repo / ".codex" / "config.toml"
+        cfg.parent.mkdir()
+        cfg.write_text("foo = 1\n\n" + self.LEGACY_VARIANT + "\n[other]\nbar = 2\n", encoding="utf-8")
+        proc = self.run_setup()
+        self.assertEqual(cfg.read_text(encoding="utf-8"), "foo = 1\n\n[other]\nbar = 2\n")
+        self.assertNotIn(self.WARN_SUMMARY, proc.stdout)
+
+    def test_legacy_only_file_is_removed(self) -> None:
+        """文件只含旧块：删文件，重跑再建的是不关记忆的注释文件。"""
+        cfg = self.repo / ".codex" / "config.toml"
+        cfg.parent.mkdir()
+        cfg.write_text(self.LEGACY_BLOCK, encoding="utf-8")
+        self.run_setup()
+        self.assertNotIn("[memories]", cfg.read_text(encoding="utf-8"))
+
+    def test_custom_memories_section_is_kept_with_warning(self) -> None:
+        cfg = self.repo / ".codex" / "config.toml"
+        cfg.parent.mkdir()
+        custom = "[memories]\ngenerate_memories = false\n"
+        cfg.write_text(custom, encoding="utf-8")
+        proc = self.run_setup()
+        self.assertEqual(cfg.read_text(encoding="utf-8"), custom)
+        self.assertIn(self.WARN_MARK, proc.stdout)
+        self.assertIn("[memories]", proc.stdout)
+        self.assertIn(self.WARN_SUMMARY, proc.stdout)
+
+    def test_features_off_is_hinted_not_enabled(self) -> None:
+        """全局 ~/.codex/config.toml 没开 memories：收尾提示，不改全局文件。"""
+        global_cfg = Path(self.temp_dir.name) / ".codex" / "config.toml"
+        global_cfg.parent.mkdir(exist_ok=True)
+        global_cfg.write_text('model = "x"\n', encoding="utf-8")
+        proc = self.run_setup()
+        self.assertIn("memories = true", proc.stdout)
+        self.assertEqual(global_cfg.read_text(encoding="utf-8"), 'model = "x"\n')
 
     # ── 第 8 步：worktree 共享钩子 ──
     HOOK_MARK = "# agent-memory-setup post-checkout"

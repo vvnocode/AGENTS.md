@@ -22,6 +22,7 @@ Same contract as worktree-share.sh (read its header for the rationale):
     container). Listing them explicitly warns. Through a whole-directory link they are the same file, nothing diverges.
   - after each action the item is re-checked with git check-ignore; when a trailing-slash rule does not match the link,
     a line without the slash is appended to the shared .git/info/exclude (never to the team's .gitignore).
+  - after linking, memory-sync.ps1 runs once so Codex memories belonging to this repo land in the main worktree's .memory.
   - list = built-in list + .worktree-share at the repo root (one path per line, # comments, ! removes a built-in item;
     the main worktree's and the target worktree's copies are merged).
 
@@ -33,6 +34,7 @@ param(
     [string]$WorktreePath = ''
 )
 $ErrorActionPreference = 'Stop'
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path   # captured at script scope: empty inside functions
 $Utf8 = New-Object Text.UTF8Encoding $false
 $IsWin = $env:OS -eq 'Windows_NT'
 
@@ -237,6 +239,14 @@ function Invoke-Link([string]$Path) {
     Write-Host "=== worktree sharing: $root -> $wt ==="
     foreach ($rel in Build-List $root $wt) { Share-Item $root $wt $rel }
     Write-Host "+ new $($script:New), kept $($script:Kept), warnings $($script:Warn)"
+    # Sync Codex memories into the main worktree's .memory before a session starts there (memory-sync.ps1);
+    # best effort: run with the current PowerShell host, never change this script's exit code
+    $sync = Join-Path $ScriptDir 'memory-sync.ps1'
+    if (Test-Path -LiteralPath $sync -PathType Leaf) {
+        $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+        try { & (Get-Process -Id $PID).Path -NoProfile -NonInteractive -File $sync $root } catch { }
+        finally { $ErrorActionPreference = $prev }
+    }
 }
 
 switch ($Command) {

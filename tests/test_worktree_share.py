@@ -90,9 +90,9 @@ class WorktreeShareTest(unittest.TestCase):
             env["LC_ALL"] = "en_US.UTF-8"
         return env
 
-    def run_share(self, path: Path, expect_ok: bool = True) -> subprocess.CompletedProcess:
+    def run_share(self, path: Path, expect_ok: bool = True, env: dict[str, str] | None = None) -> subprocess.CompletedProcess:
         proc = subprocess.run(["bash", str(SHARE), "link", str(path)], cwd=self.temp_dir.name,
-                              capture_output=True, text=True, env=self.env(), check=False)
+                              capture_output=True, text=True, env=env or self.env(), check=False)
         if expect_ok:
             self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
         return proc
@@ -332,6 +332,22 @@ class WorktreeShareTest(unittest.TestCase):
         self.assertFalse((wt / ".claude" / "settings.local.json").exists())
         self.assertIn(self.WARN_MARK, proc.stdout)
         self.assertIn("settings.local.json", proc.stdout)
+
+    # ── 末尾同步 Codex 记忆 ──
+    def test_link_runs_memory_sync_when_codex_memories_exist(self) -> None:
+        """link 末尾调一次同步：根工作区有 .memory 且伪 CODEX_HOME 里有本仓 cwd 的记忆，link 后主工作区多出 codex-*.md。"""
+        self.write(".gitignore", ".worktrees/\n.memory\n")
+        self.commit_all()
+        self.write(".memory/MEMORY.md", "# 索引\n")
+        codex = Path(self.temp_dir.name) / ".codex" / "memories"
+        codex.mkdir(parents=True)
+        (codex / "raw_memories.md").write_text(
+            "## Thread `dddddddd-0000-0000-0000-000000000004`\nupdated_at: 2026-09-05T00:00:00+00:00\ncwd: "
+            + str(self.root) + "\n\n---\ndescription: d\ntask_group: g\n---\n\n### Task 1: t\n\nReusable knowledge:\n- 句子 DDDD。\n",
+            encoding="utf-8")
+        wt = self.add_worktree("sync")
+        proc = self.run_share(wt, env={**self.env(), "CODEX_HOME": str(Path(self.temp_dir.name) / ".codex")})
+        self.assertTrue(list((self.root / ".memory").glob("codex-g-*.md")), proc.stdout + proc.stderr)
 
     # ── 钩子集成 ──
     def test_git_worktree_add_triggers_sharing(self) -> None:

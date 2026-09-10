@@ -23,6 +23,7 @@
 # 分支里新增的项合入前就生效。类型不用声明，根工作区里是目录就链、是文件就复制。
 #
 # 由 setup.sh 安装的 post-checkout 钩子在 git worktree add 后自动调用本脚本 link；接线前建的 worktree 手动执行一次。
+# link 末尾会调一次 memory-sync.sh，把 Codex 记忆里属于本仓的部分同步进主工作区的 .memory（无 .memory 时静默）。
 # 兼容 macOS 自带 bash 3.2：不用 mapfile、关联数组、${var,,}。
 set -euo pipefail
 
@@ -168,6 +169,11 @@ do_link() {
         share_item "$root" "$wt" "$rel"
     done < <(build_list "$root" "$wt")
     echo "✓ 新建 ${N_NEW}，已就位 ${N_OK}，告警 ${N_WARN}"
+    # 新 worktree 开会话前把 Codex 记忆同步到主工作区的 .memory（memory-sync.sh）；尽力而为，不影响本脚本退出码
+    local sync_sh
+    sync_sh="$(cd "$(dirname "$0")" && pwd -P)/memory-sync.sh"
+    [ -f "$sync_sh" ] && { bash "$sync_sh" "$root" || true; }
+    return 0
 }
 
 case "${1:-}" in

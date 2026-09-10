@@ -25,11 +25,12 @@
 
 **仓内 `.memory/` 存在即为该项目唯一的跨会话记忆，所有工具共用。**
 
-- 仅在 Git 仓库中应用本节。仓根存在 `.memory/` 时，会话开始先读 `.memory/MEMORY.md` 索引，命中再读对应条目；跨会话记忆只写这里，不写工具自带的仓外记忆。
+- 仅在 Git 仓库中应用本节。仓根存在 `.memory/` 时，会话开始先读 `.memory/MEMORY.md` 索引，命中再读对应条目；Agent 自己新写的跨会话记忆只写这里。工具自带的记忆（如 Codex）照常写其默认位置，由接线脚本按项目同步为 `.memory/` 下的普通记忆条目（`metadata.source: codex`），读索引时一并读到。
 - 只记换个会话仍有用、且代码与 Git 历史读不出来的事：用户偏好、纠正过的做法、外部资源指针、非显然约束。不记代码结构、已修的 bug、本次会话的临时结论。
 - 记忆记做事方式，不记事实结论：带推理链或被否方案的结论、排障根因、领域对象与机制不进 `.memory/`——本机存在 `~/.llm-wiki` 时按「四、全局知识工作台」写 wiki，否则进项目 `docs/`；`project` 类只放约束与状态。
 - 一条记忆一个 `.md`：frontmatter 含 `name`、`description`、`metadata.type`（`user` | `feedback` | `project` | `reference`）；正文一个事实，`feedback` / `project` 类附 **Why** 与 **How to apply**。索引 `MEMORY.md` 每条一行 `- [标题](文件.md) — 摘要`，不放正文。
 - 写入前先查已有条目：已覆盖就更新，不新建重复；发现错误的记忆直接删除。
+- `metadata.source: codex` 的条目由同步脚本生成，内容为 Codex 原句：不要手改（文件名是内容哈希，改了就成孤儿），要修正就删掉它另写一条正常记忆；带推理链的结论按分工迁 wiki。
 - 仓内没有 `.memory/` 时不自行创建；搭建与各工具接法见本规则仓的 `skills/agent-memory-setup`（安装后即 skill `agent-memory-setup`）。
 
 ---

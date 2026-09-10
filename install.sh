@@ -23,6 +23,7 @@
 #
 # 同时把本仓 skills/agent-memory-setup（单仓接线：一份指令、一份仓内记忆、worktree 共享钩子）软链到三处全局 Skill 发现根：
 #   ~/.agents/skills、~/.claude/skills、~/.codex/skills
+#   再向 ~/.claude/settings.json 与 ~/.codex/hooks.json 各追加一条 SessionStart 钩子（memory-sync），RULES_NO_HOOKS=1 跳过
 set -euo pipefail
 
 # 整个脚本体包进 main：curl | bash 时 bash 边读边执行，包成函数后必须读完整个脚本才开始执行，下载中断不会执行半截脚本。
@@ -119,6 +120,40 @@ main() {
             ln -s "$SKILL_SRC" "$link"; S_ADDED=$((S_ADDED+1))
         fi
     done
+    # ── 全局钩子：会话开始把 Codex 记忆同步进当前仓库的 .memory ──
+    # Claude Code 与 Codex 都有 SessionStart 事件、都以会话目录为 cwd 运行 command 钩子，所以命令不带参数，脚本按 cwd 找仓库。
+    # 命令走 ~/.agents/skills 的稳定路径（$HOME 在安装时展开，Codex 的信任提示里显示的就是最终命令）。
+    # 只追加自己的条目（识别子串 agent-memory-setup 与 memory-sync），已有则跳过，其余内容原样保留；JSON 坏了只告警不动。
+    # 未接线的仓库里脚本因无 .memory 静默退出，所以全局装一次即可。RULES_NO_HOOKS=1 跳过本段。
+    HOOK_CMD="bash \"$HOME/.agents/skills/agent-memory-setup/memory-sync.sh\" || true"
+    if [ "${RULES_NO_HOOKS:-0}" = "1" ]; then
+        echo "· RULES_NO_HOOKS=1：跳过全局钩子"
+    elif command -v python3 >/dev/null; then
+        for spec in "$HOME/.claude/settings.json|SessionStart" "$HOME/.codex/hooks.json|SessionStart"; do
+            file=${spec%%|*}; event=${spec##*|}
+            echo "· 向 $file 的 hooks.$event 追加：$HOOK_CMD"
+            python3 - "$file" "$event" "$HOOK_CMD" <<'PY' || { echo "⚠ $file 不是合法 JSON，未改动"; WARN=$((WARN+1)); }
+import json, pathlib, sys
+path, event, cmd = pathlib.Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+data = {}
+if path.exists():
+    data = json.loads(path.read_text(encoding="utf-8") or "{}")   # 解析失败抛异常 → 非零退出 → shell 侧告警
+hooks = data.setdefault("hooks", {})
+groups = hooks.setdefault(event, [])
+if any("agent-memory-setup" in h.get("command", "") and "memory-sync" in h.get("command", "")
+       for g in groups for h in g.get("hooks", [])):
+    print(f"· {path} 已有 memory-sync 钩子")
+    sys.exit(0)
+groups.append({"hooks": [{"type": "command", "command": cmd}]})
+path.parent.mkdir(parents=True, exist_ok=True)
+path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+print(f"· 已写 {path}（hooks.{event}）")
+PY
+        done
+        echo "· Codex 首次启动会要求审核并信任这条钩子定义，确认后才会执行"
+    else
+        echo "⚠ 未找到 python3，未写全局钩子；装好后重跑安装"; WARN=$((WARN+1))
+    fi
     echo "· 安装完成：规则 新建 $ADDED 条，已就位 $KEPT 条，重指 $MOVED 条；skill 新建 $S_ADDED 条，已就位 $S_KEPT 条，重指 $S_MOVED 条；告警 $WARN 条（规则源：${RULES}）"
     [ -d "$HOME/.vvnocode/skills" ] && echo "· 旧 skills 仓托管副本 $HOME/.vvnocode/skills 已无用，可手动删除"
     echo "· 接线一个仓库：$SKILL_SRC/setup.sh [仓库路径]（Windows 用同目录 setup.ps1）"
