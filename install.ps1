@@ -140,6 +140,8 @@ param()
     #    directory and never ~/.agents/skills, so all three are needed. agent-memory-setup used to live in the
     #    vvnocode/skills repo (merged into this repo on 2026-09-08): links into that repo's managed clone
     #    (~/.vvnocode/skills) or the even older XDG location (vvnocode-skills) are repointed here; others are only reported.
+    #    On Windows that repo's install.ps1 kept its managed clone under %LOCALAPPDATA%\vvnocode-skills (XDG_DATA_HOME is a
+    #    Unix convention), so that location is an old one too -- missed until the 2026-09-10 test-machine run.
     #    A directory symlink needs Developer Mode or admin rights; without it a junction (no privilege needed) is created.
     $SkillSrc = Join-Path (Join-Path $Repo 'skills') 'agent-memory-setup'
     $DataHome = if ($env:XDG_DATA_HOME) { $env:XDG_DATA_HOME } else { Join-Path (Join-Path $UserHome '.local') 'share' }
@@ -147,6 +149,7 @@ param()
         (Get-NormalizedPath (Join-Path $UserHome '.vvnocode\skills\skills\agent-memory-setup')),
         (Get-NormalizedPath (Join-Path $DataHome 'vvnocode-skills\skills\agent-memory-setup'))
     )
+    if ($env:LOCALAPPDATA) { $OldSkill += Get-NormalizedPath (Join-Path $env:LOCALAPPDATA 'vvnocode-skills\skills\agent-memory-setup') }
     $SkillRoots = @(
         (Join-Path (Join-Path $UserHome '.agents') 'skills'),
         (Join-Path (Join-Path $UserHome '.claude') 'skills'),

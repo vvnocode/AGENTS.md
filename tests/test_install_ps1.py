@@ -56,6 +56,21 @@ class InstallPs1Test(bash_tests.InstallTest):
         self.assert_linked(bash_tests.ROOT / "AGENTS.md")
         self.assertFalse(self.src.exists())
 
+    def test_skill_link_to_windows_old_skills_location_is_repointed(self) -> None:
+        """旧 skills 仓的 install.ps1 在 Windows 把托管副本放在 %LOCALAPPDATA%\vvnocode-skills：指向它的链接也要重指、不告警。
+        2026-09-10 Windows 测试机实测：三处联接停在该位置，install.ps1 只告警不动，钩子命令指向的 memory-sync.ps1 因此不存在。"""
+        self.make_origin()
+        local_app = self.home / "AppData" / "Local"
+        old = local_app / "vvnocode-skills" / "skills" / "agent-memory-setup"
+        old.mkdir(parents=True)
+        for root in bash_tests.SKILL_ROOTS:
+            self.skill_link(root).parent.mkdir(parents=True, exist_ok=True)
+            self.skill_link(root).symlink_to(old)
+        proc = self.run_piped({**self.env(), "LOCALAPPDATA": str(local_app)})
+        self.assert_skill_linked(self.src / "skills" / "agent-memory-setup")
+        self.assertIn(self.SKILL_SUMMARY_REPOINTED, proc.stdout)
+        self.assertNotIn(self.WARN_MARK, proc.stdout, proc.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()
