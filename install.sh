@@ -23,7 +23,8 @@
 #
 # 同时把本仓 skills/agent-memory-setup（单仓接线：一份指令、一份仓内记忆、worktree 共享钩子）软链到三处全局 Skill 发现根：
 #   ~/.agents/skills、~/.claude/skills、~/.codex/skills
-#   再向 ~/.claude/settings.json 与 ~/.codex/hooks.json 各追加一条 SessionStart 钩子（memory-sync），RULES_NO_HOOKS=1 跳过
+#   再向 ~/.claude/settings.json 与 ~/.codex/hooks.json 各追加一条 SessionStart 钩子（memory-sync），RULES_NO_HOOKS=1 跳过；
+#   ~/.codex/config.toml 里弃用的 [features] codex_hooks 改名为 hooks（值不变），hooks = false 只告警
 set -euo pipefail
 
 # 整个脚本体包进 main：curl | bash 时 bash 边读边执行，包成函数后必须读完整个脚本才开始执行，下载中断不会执行半截脚本。
@@ -150,7 +151,48 @@ path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding=
 print(f"· 已写 {path}（hooks.{event}）")
 PY
         done
-        echo "· Codex 首次启动会要求审核并信任这条钩子定义，确认后才会执行"
+        # Codex 钩子默认开启（[features] hooks），旧名 codex_hooks 已弃用但仍被接受：把弃用名改成正名、保留原值，其余字节不动；
+        # 明确写了 hooks = false 的只告警（memory-sync 钩子不会跑），不代开；没有 config.toml 或没有 [features] 节不补写。
+        # 退出码：0 无事，2 hooks = false，其余为读写失败。
+        rc=0
+        python3 - "$HOME/.codex/config.toml" <<'PY' || rc=$?
+import pathlib, re, sys
+path = pathlib.Path(sys.argv[1])
+if not path.is_file():
+    sys.exit(0)
+lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+HEADER = re.compile(r"\s*\[features\]\s*(#.*)?$")
+in_features, has_hooks = False, False
+for line in lines:                                   # 先看 [features] 里有没有正名，决定弃用行是改名还是删除
+    if re.match(r"\s*\[", line):
+        in_features = bool(HEADER.match(line.rstrip("\r\n")))
+    elif in_features and re.match(r"\s*hooks\s*=", line):
+        has_hooks = True
+out, in_features, changed, hooks_value = [], False, False, None
+for line in lines:
+    if re.match(r"\s*\[", line):
+        in_features = bool(HEADER.match(line.rstrip("\r\n")))
+    elif in_features:
+        m = re.match(r"(\s*)codex_hooks(\s*=[^\r\n]*)(\r?\n?)$", line)
+        if m:
+            changed = True
+            if has_hooks:
+                continue                             # 正名已在：弃用行直接删
+            line = f"{m.group(1)}hooks{m.group(2)}{m.group(3)}"   # 改名，值与行尾原样保留
+        if re.match(r"\s*hooks\s*=", line):
+            hooks_value = line.split("=", 1)[1].split("#", 1)[0].strip()
+    out.append(line)
+if changed:
+    path.write_text("".join(out), encoding="utf-8")
+    print(f"· {path} 的 [features] codex_hooks 已改为 hooks（Codex 已弃用旧名，值不变）")
+sys.exit(2 if hooks_value == "false" else 0)
+PY
+        case $rc in
+            0) ;;
+            2) echo "⚠ ~/.codex/config.toml 的 [features] hooks = false：Codex 不加载任何钩子，memory-sync 不会执行（默认开启，去掉该行即可）"; WARN=$((WARN+1)) ;;
+            *) echo "⚠ 读写 ~/.codex/config.toml 失败，未改动"; WARN=$((WARN+1)) ;;
+        esac
+        echo "· Codex 每条钩子都要人工信任：首次启动按提示在 Codex 里执行 /hooks 审核并信任这条定义（信任按定义哈希记在 ~/.codex/config.toml 的 [hooks.state]，命令改了要重新信任）；之后 codex exec \"ok\" 打印 hook: SessionStart 即生效"
     else
         echo "⚠ 未找到 python3，未写全局钩子；装好后重跑安装"; WARN=$((WARN+1))
     fi

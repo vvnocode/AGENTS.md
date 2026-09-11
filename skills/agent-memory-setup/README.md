@@ -27,7 +27,7 @@ curl -fsSL https://raw.githubusercontent.com/vvnocode/AGENTS.md/main/skills/agen
 ~/.agents/skills/agent-memory-setup/memory-sync.sh [仓库路径]
 ```
 
-Windows：`pwsh -File "$env:USERPROFILE\.agents\skills\agent-memory-setup\memory-sync.ps1" [仓库路径]`。之后由全局安装写下的 Claude 与 Codex `SessionStart` 钩子自动触发；机制与不做的事见 [SKILL.md](SKILL.md)「工具记忆同步」。
+Windows：`pwsh -File "$env:USERPROFILE\.agents\skills\agent-memory-setup\memory-sync.ps1" [仓库路径]`。之后由全局安装写下的 Claude 与 Codex `SessionStart` 钩子自动触发（Codex 侧要先在 `/hooks` 里信任该钩子，`codex exec "ok"` 打印 `hook: SessionStart` 即生效）；机制与不做的事见 [SKILL.md](SKILL.md)「工具记忆同步」。
 
 已用根目录 `install.sh` 装好本 skill 的机器，也可直接运行本地副本：
 
