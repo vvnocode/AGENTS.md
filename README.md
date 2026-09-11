@@ -72,7 +72,7 @@ Windows 建文件软链需要开发者模式或管理员权限；没有时脚本
 - 托管 clone 在 `~/.vvnocode/rules`（Windows `%USERPROFILE%\.vvnocode\rules`）；环境变量 `RULES_REPO_DIR` 改位置，`RULES_REPO_URL` 改为 fork。按早期 README 装在 `~/.config/vibe-coding-rules` 的，重跑安装会自动搬过来并重指链接。
 - 入口已是你自己的规则文件，或指向别处的链接：只告警不动。先把自己的规则并入，再手动换成链接。
 - 在本仓 clone 内运行 `./install.sh`（Windows `powershell -ExecutionPolicy Bypass -File .\install.ps1`）：软链直接指向该 clone，不联网、不建托管副本，开发用。
-- 向 `~/.claude/settings.json` 与 `~/.codex/hooks.json` 各追加一条 `SessionStart` 钩子：会话开始把 Codex 记忆里属于当前仓库的部分同步进仓内 `.memory/`（未接线的仓库静默跳过）。追加前打印内容，`RULES_NO_HOOKS=1` 跳过；Codex 首次启动会要求信任这条钩子。
+- 向 `~/.claude/settings.json` 与 `~/.codex/hooks.json` 各追加一条 `SessionStart` 钩子：会话开始把 Codex 记忆里属于当前仓库的部分同步进仓内 `.memory/`（未接线的仓库静默跳过）。追加前打印内容，`RULES_NO_HOOKS=1` 跳过。Codex 钩子默认开启，`~/.codex/config.toml` 里弃用的 `[features] codex_hooks` 会被改成 `hooks`（值不变，写了 `false` 只告警）；Codex 每条钩子都要人工信任：首次启动按提示在 Codex 里执行 `/hooks` 信任这条定义，之后 `codex exec "ok"` 打印 `hook: SessionStart` 即生效。Claude Code 的用户级钩子不需批准。
 - 卸载：删掉各入口的软链、两处钩子里的 memory-sync 条目，再删 `~/.vvnocode/rules`。
 - 脚本纯 ASCII、提示为英文：Windows PowerShell 5.1 的 `irm` 不去 BOM，`-File` 又按本地代码页解码，两条路径同时成立只有纯 ASCII 一种写法。
 

@@ -47,6 +47,7 @@ powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\.agents\skills\agent-
 - dsh / opencode：开会话问同一问题，它们读 `AGENTS.md`。
 - 记忆可见性：在 `MEMORY.md` 放一条带口令的索引行，问各工具读到几条。
 - Codex 记忆同步：`memory-sync.sh <仓根>`（Windows：`memory-sync.ps1`）后 `ls .memory/codex-*.md`，`MEMORY.md` 末尾出现 `<!-- codex-sync:begin -->` 段。无输出、无文件多半是 Codex 还没生成，见陷阱表。
+- 全局钩子：Codex 里 `/hooks` 应列出 memory-sync 且已信任；`codex exec "ok"` 启动时逐行打印 `hook: <事件>`，出现 `hook: SessionStart` 与 `Completed` 即生效（未信任的钩子不出现在这些行里）。Claude Code：`/hooks` 在 User Settings 下列出该条，`claude --debug` 的日志 `~/.claude/debug/latest` 记 `hook_execution_start`。
 
 ## 陷阱
 
@@ -58,6 +59,8 @@ powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\.agents\skills\agent-
 | 拿 `codex doctor` 当证据 | 只报全局配置，得出反向结论 | 用 `codex-effective-config.py` |
 | 刚说完就去查 `.memory/codex-*.md` | Codex 记忆是后台异步生成：会话空闲数小时后才总结，配额低于门限还会跳过；同步只能搬已生成的 | 先看 `~/.codex/memories/rollout_summaries/` 有没有本会话的文件：没有就是 Codex 还没生成，不是同步问题 |
 | 手改 `codex-*.md` 或它的索引行 | 文件名是句子哈希、索引段每次整段重生成：改过的文件成孤儿，索引行被覆盖 | 要修正就删掉该文件另写一条正常记忆；索引段之外的行不会被动 |
+| Codex 钩子未信任 | 新加或改过的钩子定义在 `/hooks` 信任前**静默**不执行，`codex exec` 的 `hook:` 行里没有它 | 启动 Codex 按提示打开 `/hooks` 审核并信任；信任按定义哈希记在全局 `config.toml` 的 `[hooks.state]`，命令变了要重新信任 |
+| 全局 `[features] hooks = false` | Codex 不加载任何钩子 | 钩子默认开启，去掉该行；install 只告警不代开。旧名 `codex_hooks` 已弃用，install 会改成 `hooks` 并保留原值 |
 | Codex Memories 没开 | 全局 `[features] memories = true` 缺失（默认关，EEA / 英国 / 瑞士不可用），`~/.codex/memories` 为空，同步永远无内容 | setup 收尾会提示；在全局 `config.toml` 或 App 设置里开，脚本不代开 |
 | 接线前建的 worktree | 没经过钩子，根工作区未入库的规则文件、`.memory`、项目级 skills、`.codex/config.toml` 都不在 | `git worktree add` 只检出入库文件：手动执行一次 `worktree-share.sh link <worktree路径>`（Windows 用 `.ps1`），见下节 |
 | 仓库设了 `core.hooksPath` 或已有别人的 `post-checkout` | setup 不覆盖，钩子没装，新 worktree 不共享 | 按 setup 输出的接入指引，在那份钩子的 flag=1 分支末尾追加一行调用 `worktree-share.sh` |
@@ -75,7 +78,7 @@ powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\.agents\skills\agent-
 - **文件名** `codex-<task_group>-<hash10>.md`，`hash10` 是句子归一后的 sha256 前 10 位：同一句子跨来源、跨线程只一条，Codex 重排列表项不产生重复文件，已存在的文件不重写；线程有 raw 块时它的会话摘要整份不取（raw 块是 Codex 对同一 rollout 做的记忆提取，摘要是叙事复述，换个说法的同一事实按句子去重抓不到），没有 raw 块的线程才用摘要；分组名按线程统一。不删除来源已消失的条目。
 - **索引**：`MEMORY.md` 末尾 `<!-- codex-sync:begin -->` / `<!-- codex-sync:end -->` 之间每条一行，与普通索引行同形，按日期倒序，封顶 60 行（Claude 开局只读索引前 200 行，用户自己的条目排前面）；段外内容一字不动。
 - **掩码**：私钥块、`ghp_` / `glpat-` / `sk-` 前缀 token、`password|token|secret = …` 赋值形态替换为 `[已掩码]`，stderr 计数。Codex 自己会脱敏，这是入库前的第二道闸。
-- **触发**：全局安装写 Claude 与 Codex 的 `SessionStart` 钩子（`RULES_NO_HOOKS=1` 跳过），命令不带参数、按会话 cwd 找仓库，没有 `.memory/` 静默退出；`worktree-share.sh link` 末尾也调一次；手动 `memory-sync.sh [仓根]`。Codex 首次启动会要求审核并信任这条钩子定义。不想装全局钩子的，在仓内 `.claude/settings.local.json` 与 `.codex/hooks.json` 写同样的 `SessionStart` 条目即可（Codex 侧需项目被信任）。
+- **触发**：全局安装写 Claude 与 Codex 的 `SessionStart` 钩子（`RULES_NO_HOOKS=1` 跳过），命令不带参数、按会话 cwd 找仓库，没有 `.memory/` 静默退出；`worktree-share.sh link` 末尾也调一次；手动 `memory-sync.sh [仓根]`。Codex 钩子默认开启（`[features] hooks`；旧名 `codex_hooks` 已弃用，install 改成正名并保留原值，写了 `false` 的只告警），但每条非托管钩子都要人工信任：首次启动 Codex 会提示打开 `/hooks`，在里面审核并信任这条定义，之后 `codex exec "ok"` 打印 `hook: SessionStart` 即生效；Claude Code 的用户级钩子不需批准。不想装全局钩子的，在仓内 `.claude/settings.local.json` 与 `.codex/hooks.json` 写同样的 `SessionStart` 条目即可（Codex 侧需项目被信任）。
 - **不做**：不反向写 Codex 存储；不动全局 `[features] memories` 开关；不解析 Codex 的 `MEMORY.md` 任务组与 `memory_summary.md`（再汇总、跨项目混写）；不进 llm-wiki（工具产物是原料，要进 wiki 走 ingest 编译）。
 
 ## worktree 里效果不变

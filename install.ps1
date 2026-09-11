@@ -211,6 +211,40 @@ param()
         Write-Host "* wrote $File (hooks.$Event)"
         return 'ok'
     }
+    # -- Codex hooks feature flag: hooks are on by default ([features] hooks); codex_hooks is a deprecated alias that still
+    #    works. Rename the alias to hooks keeping its value and touch nothing else; an explicit hooks = false is kept and
+    #    reported (the memory-sync hook will not run); no config.toml or no [features] table: nothing is written.
+    function Update-CodexFeatures([string]$File) {
+        # returns 'ok' | 'warn'
+        if (-not (Test-Path -LiteralPath $File -PathType Leaf)) { return 'ok' }
+        $lines = [IO.File]::ReadAllText($File, [Text.Encoding]::UTF8) -split '(?<=\n)'
+        $header = '^\s*\[features\]\s*(#[^\r\n]*)?\r?\n?$'
+        $inFeatures = $false; $hasHooks = $false
+        foreach ($l in $lines) {
+            if ($l -match '^\s*\[') { $inFeatures = ($l -match $header) }
+            elseif ($inFeatures -and $l -match '^\s*hooks\s*=') { $hasHooks = $true }
+        }
+        $out = New-Object System.Collections.Generic.List[string]
+        $inFeatures = $false; $changed = $false; $hooksValue = $null
+        foreach ($l in $lines) {
+            if ($l -match '^\s*\[') { $inFeatures = ($l -match $header) }
+            elseif ($inFeatures) {
+                if ($l -match '^(\s*)codex_hooks(\s*=[^\r\n]*)(\r?\n?)$') {
+                    $changed = $true
+                    if ($hasHooks) { continue }                                   # canonical key present: drop the alias line
+                    $l = $Matches[1] + 'hooks' + $Matches[2] + $Matches[3]        # rename, value and line ending kept
+                }
+                if ($l -match '^\s*hooks\s*=([^\r\n]*)') { $hooksValue = ($Matches[1] -split '#', 2)[0].Trim() }
+            }
+            $out.Add($l)
+        }
+        if ($changed) {
+            [IO.File]::WriteAllText($File, ($out -join ''), $Utf8)
+            Write-Host "* renamed [features] codex_hooks to hooks in $File (deprecated alias, value kept)"
+        }
+        if ($hooksValue -eq 'false') { Write-Host "! $File has [features] hooks = false: Codex loads no hooks, memory-sync will not run (hooks are on by default; drop that line)"; return 'warn' }
+        return 'ok'
+    }
     if ($env:RULES_NO_HOOKS -eq '1') {
         Write-Host '* RULES_NO_HOOKS=1: global hooks skipped'
     } else {
@@ -223,7 +257,8 @@ param()
             Write-Host "* appending to $($spec.File) hooks.$($spec.Event): $HookCmd"
             if ((Add-Hook $spec.File $spec.Event $HookCmd) -eq 'warn') { $Warn++ }
         }
-        Write-Host '* Codex asks you to review and trust this hook definition on its next start; it runs only after that'
+        if ((Update-CodexFeatures (Join-Path (Join-Path $UserHome '.codex') 'config.toml')) -eq 'warn') { $Warn++ }
+        Write-Host '* Codex requires you to trust every hook: on its next start run /hooks in Codex and trust this entry (recorded by hash in ~/.codex/config.toml [hooks.state]; a changed command needs a new trust); afterwards codex exec "ok" prints hook: SessionStart'
     }
     Write-Host "* done: rules added $Added, kept $Kept, repointed $Moved, copied $Copied; skill added $SAdded, kept $SKept, repointed $SMoved; warnings $Warn (rules: $Rules)"
     if (Test-Path (Join-Path (Join-Path $UserHome '.vvnocode') 'skills')) { Write-Host "* the old skills repo clone under ~\.vvnocode\skills is no longer used and can be deleted" }

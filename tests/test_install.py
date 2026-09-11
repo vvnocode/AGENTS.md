@@ -158,9 +158,55 @@ class InstallTest(unittest.TestCase):
 
     def test_rules_no_hooks_skips(self) -> None:
         self.make_origin()
+        self.write_codex_config("[features]\ncodex_hooks = true\n")
         self.run_piped({**self.env(), "RULES_NO_HOOKS": "1"})
         self.assertFalse(self.claude_settings().exists())
         self.assertFalse(self.codex_hooks().exists())
+        self.assertEqual(self.codex_config().read_text(encoding="utf-8"), "[features]\ncodex_hooks = true\n", "开关迁移随钩子一起跳过")
+
+    # ── Codex 钩子开关：hooks 默认开启，codex_hooks 是弃用别名 ──
+    def codex_config(self) -> Path:
+        return self.home / ".codex" / "config.toml"
+
+    def write_codex_config(self, text: str) -> None:
+        self.codex_config().parent.mkdir(parents=True, exist_ok=True)
+        self.codex_config().write_text(text, encoding="utf-8")
+
+    def test_codex_deprecated_codex_hooks_key_is_renamed(self) -> None:
+        """Codex 0.147 起 [features].codex_hooks 是弃用别名（启动打 deprecated 警告），正名 hooks：只改这一行、保留原值，其余字节不动，重跑幂等。"""
+        self.make_origin()
+        self.write_codex_config('model = "x"\n\n[features]\ncodex_hooks = true\njs_repl = false\n\n[other]\nk = 1\n')
+        proc = self.run_piped()
+        self.assertEqual(self.codex_config().read_text(encoding="utf-8"),
+                         'model = "x"\n\n[features]\nhooks = true\njs_repl = false\n\n[other]\nk = 1\n')
+        self.assertIn("codex_hooks", proc.stdout)
+        before = self.codex_config().read_bytes()
+        proc = self.run_piped()
+        self.assertEqual(before, self.codex_config().read_bytes())
+        self.assertNotIn(self.WARN_MARK, proc.stdout, proc.stdout)
+
+    def test_codex_hooks_false_is_kept_with_warning(self) -> None:
+        """用户明确关了 hooks（弃用名写 false 同样保留 false）：不改值，只告警 memory-sync 钩子不会跑。"""
+        self.make_origin()
+        self.write_codex_config("[features]\ncodex_hooks = false\n")
+        proc = self.run_piped()
+        self.assertEqual(self.codex_config().read_text(encoding="utf-8"), "[features]\nhooks = false\n")
+        self.assertIn(self.WARN_MARK, proc.stdout, proc.stdout)
+        self.write_codex_config("[features]\nhooks = false\n")
+        proc = self.run_piped()
+        self.assertEqual(self.codex_config().read_text(encoding="utf-8"), "[features]\nhooks = false\n")
+        self.assertIn(self.WARN_MARK, proc.stdout, proc.stdout)
+
+    def test_codex_config_without_features_is_untouched(self) -> None:
+        """钩子默认开启：没有 config.toml 不创建，没有 [features] 节不补写；codex_hooks 出现在别的节里也不动。"""
+        self.make_origin()
+        self.run_piped()
+        self.assertFalse(self.codex_config().exists())
+        self.write_codex_config('[projects."/x"]\ntrust_level = "trusted"\ncodex_hooks = true\n')
+        before = self.codex_config().read_bytes()
+        proc = self.run_piped()
+        self.assertEqual(before, self.codex_config().read_bytes())
+        self.assertNotIn(self.WARN_MARK, proc.stdout, proc.stdout)
 
     def test_invalid_json_is_left_alone_with_warning(self) -> None:
         self.make_origin()
