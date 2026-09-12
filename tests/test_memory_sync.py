@@ -251,11 +251,11 @@ class MemorySyncTest(unittest.TestCase):
         self.write_codex()
         self.run_sync(self.repo_a)
         p, text = self.find("默认保持本地")
-        self.assertTrue(p.name.startswith("codex-repo-a-wiring-"), p.name)
+        self.assertRegex(p.name, r"^codex-[0-9A-Za-z\u4e00-\u9fff-]{1,12}-[0-9a-f]{6}\.md$")
         head = text.split("---\n")[1]
         self.assertRegex(
             head,
-            r"^name: codex-repo-a-wiring-[0-9a-f]{10}\ndescription: .+\nmetadata:\n  type: feedback\n  source: codex\n"
+            r"^name: codex-[^\n]+-[0-9a-f]{6}\ndescription: .+\nmetadata:\n  type: feedback\n  source: codex\n"
             r"  thread_id: aaaaaaaa-0000-0000-0000-000000000001\n  observed_at: 2026-09-01T10:00:00\+00:00\n$",
         )
         self.assertIn("  type: project", self.find("测试命令是")[1])
@@ -265,6 +265,32 @@ class MemorySyncTest(unittest.TestCase):
         self.assertTrue(all(t.count("\n---\n") == 1 for t in texts), "正文里不能再出现 --- 分隔")
         self.assertTrue(all("rollout_path" not in t for t in texts))
         self.assertIn("来源：Codex 会话「仓 A 的接线与测试」，2026-09-01。", text)
+
+    def test_file_name_carries_sentence_head(self) -> None:
+        """文件名是 codex-<句子开头>-<6 位哈希>：一眼看出内容，不再带 Codex 的 task_group。"""
+        self.write_codex()
+        self.run_sync(self.repo_a)
+        p, text = self.find("默认保持本地")
+        self.assertTrue(p.stem.startswith("codex-用户说"), p.name)
+        self.assertIn(f"name: {p.stem}\n", text, "frontmatter 的 name 要与文件名一致")
+        self.assertFalse([q for q in self.codex_files() if "repo-a-wiring" in q.name], "不该再带 task_group")
+
+    def test_legacy_named_entry_is_renamed_not_duplicated(self) -> None:
+        """既有条目按句子认领：命名方案变了就改名，不新建第二份。"""
+        self.write_codex()
+        self.run_sync(self.repo_a)
+        p, text = self.find("默认保持本地")
+        legacy = p.parent / "codex-repo-a-wiring-0123456789.md"
+        p.rename(legacy)
+        legacy.write_text(text.replace(f"name: {p.stem}", "name: codex-repo-a-wiring-0123456789"), encoding="utf-8")
+        n_before = len(self.codex_files())
+        self.run_sync(self.repo_a)
+        self.assertFalse(legacy.exists(), "旧命名文件应被改名")
+        self.assertEqual(n_before, len(self.codex_files()), "不该多出一份")
+        q, qtext = self.find("默认保持本地")
+        self.assertEqual(p.name, q.name)
+        self.assertIn(f"name: {q.stem}\n", qtext)
+        self.assertNotIn("codex-repo-a-wiring-0123456789", self.index())
 
     def test_no_memory_dir_is_silent_noop(self) -> None:
         """仓 B 没有 .memory：退出 0、无输出、不建目录。"""
@@ -299,7 +325,7 @@ class MemorySyncTest(unittest.TestCase):
         self.assertEqual(sum("摘要独有句子" in t for t in texts), 0)
         self.assertEqual(sum("PARAPHRASE" in t for t in texts), 0)
         # 线程 d 没有 raw 块：摘要生效，分组名退回 thread 前 8 位
-        self.assertTrue(self.find("ONLYROLLOUT")[0].name.startswith("codex-dddddddd-"))
+        self.assertRegex(self.find("ONLYROLLOUT")[0].name, r"^codex-.+-[0-9a-f]{6}\.md$")
 
     def test_rerun_is_byte_identical_and_reorder_adds_nothing(self) -> None:
         self.write_codex()
@@ -338,7 +364,7 @@ class MemorySyncTest(unittest.TestCase):
         self.assertLess(idx.index("<!-- codex-sync:begin -->"), idx.index("<!-- codex-sync:end -->"))
         self.assertTrue(idx.rstrip("\n").endswith("<!-- codex-sync:end -->"))
         lines = idx[idx.index("<!-- codex-sync:begin -->"):].splitlines()[1:-1]
-        pattern = r"^- \[.+\]\(codex-[a-z0-9-]+-[0-9a-f]{10}\.md\) — (feedback|project)·\d{4}-\d{2}-\d{2}$"
+        pattern = r"^- \[.+\]\(codex-[0-9A-Za-z一-鿿-]+-[0-9a-f]{6}\.md\) — (feedback|project)·\d{4}-\d{2}-\d{2}$"
         self.assertTrue(all(re.match(pattern, line) for line in lines), lines)
         self.assertLess(idx.index("·2026-09-02"), idx.index("·2026-09-01"), "按 observed_at 倒序")
 
@@ -356,7 +382,7 @@ class MemorySyncTest(unittest.TestCase):
         idx = self.index()
         section = idx[idx.index("<!-- codex-sync:begin -->"):]
         self.assertNotIn("codex-memory-location.md", section, "手写条目不该出现在同步段")
-        self.assertIn("codex-repo-a-wiring-", section, "真同步产物仍应进段")
+        self.assertRegex(section, r"\]\(codex-[^)]+-[0-9a-f]{6}\.md\)", "真同步产物仍应进段")
         self.assertEqual(before, hand.read_bytes(), "手写条目不该被改写")
 
     def test_index_is_capped_at_60_with_warning(self) -> None:

@@ -4,7 +4,7 @@
 用法：memory-sync.py [仓库路径]      缺省为当前所在 git 仓库；对附属 worktree 执行时落点是主工作区的 .memory/
 
 输入：$CODEX_HOME/memories/raw_memories.md（按线程分块）与 rollout_summaries/*.md（按会话一文件）。两者每条都带 cwd。
-输出：<仓根>/.memory/codex-<task_group>-<hash10>.md，一个列表项一条；MEMORY.md 末尾标记段内每条一行索引（只索引 frontmatter 带 source: codex 的文件）。
+输出：<仓根>/.memory/codex-<句子开头>-<hash6>.md，一个列表项一条；MEMORY.md 末尾标记段内每条一行索引（只索引 frontmatter 带 source: codex 的文件）。
 不做：不反向写 Codex 存储；不删除来源已消失的条目；不改写句子（只做凭证掩码）。
 退出码恒为 0（钩子里调用，不能影响会话）；解析问题写 stderr。
 兼容 Python 3.8+，仅标准库。设计见 docs/specs/2026-09-09-工具记忆同步回项目-design.md 第 5 节。
@@ -193,9 +193,14 @@ def mask(sentence: str) -> Tuple[str, int]:
     return sentence, n
 
 
-def slug(s: str, fallback: str) -> str:
-    s = re.sub(r"[^a-z0-9]+", "-", s.lower()).strip("-")
-    return s or fallback
+def name_slug(sentence: str) -> str:
+    """文件名里的可读前缀：取句子开头的字母数字与汉字，其余压成连字符，最多 12 字符。
+
+    旧方案用 Codex 的 task_group 作前缀，看不出内容、还带工具自己的英文分组名；
+    改用句子开头后，仓内条目与手写记忆一眼可辨。去重仍靠后缀哈希。
+    """
+    s = re.sub(r"[^0-9A-Za-z\u4e00-\u9fff]+", "-", sentence).strip("-")
+    return s[:12].rstrip("-") or "entry"
 
 
 def yaml_str(s: str) -> str:
@@ -225,16 +230,12 @@ def render(entry: dict) -> str:
 def build_entries(sources: List[dict]) -> Tuple[List[dict], int]:
     """按句子去重、生成条目；返回 (条目, 掩码计数)。
 
-    - 分组名按线程统一：任一来源带 task_group 就全线程沿用，缺则用 thread 前 8 位。
     - 线程有 raw 块时，它的会话摘要整份不取：raw 块是 Codex 对同一 rollout 做的记忆提取，摘要是叙事复述，
       换个说法的同一事实按句子去重抓不到（阳性对照里条目翻倍）；只有没有 raw 块的线程才用摘要。
     - 来源按 updated_at 升序处理（相同则 raw 先于摘要），首次出现的句子为准。
     """
-    groups: Dict[str, str] = {}
     has_raw: Set[str] = set()
     for src in sources:
-        if src["task_group"] and src["thread_id"] not in groups:
-            groups[src["thread_id"]] = src["task_group"]
         if src["kind"] == "raw":
             has_raw.add(src["thread_id"])
     seen: Dict[str, dict] = {}
@@ -243,16 +244,15 @@ def build_entries(sources: List[dict]) -> Tuple[List[dict], int]:
         tid = src["thread_id"]
         if src["kind"] == "rollout" and tid in has_raw:
             continue
-        group = slug(groups.get(tid, ""), tid[:8])
         for label, sentence, _title in src["items"]:
             sentence, n = mask(sentence)
             masked += n
             key = normalize(sentence)
             if not key or key in seen:
                 continue
-            h = hashlib.sha256(key.encode("utf-8")).hexdigest()[:10]
+            h = hashlib.sha256(key.encode("utf-8")).hexdigest()[:6]
             seen[key] = {
-                "name": f"codex-{group}-{h}", "sentence": sentence, "type": LABEL_TYPE[label],
+                "name": f"codex-{name_slug(sentence)}-{h}", "sentence": sentence, "type": LABEL_TYPE[label],
                 "thread_id": tid, "observed_at": src["updated_at"], "description": src["description"],
             }
     return list(seen.values()), masked
@@ -275,6 +275,21 @@ def entries_on_disk(memory: Path) -> List[dict]:
         desc = fm.get("description", "").strip('"').replace('\\"', '"')
         out.append({"name": p.stem, "type": fm.get("type", "reference"), "observed_at": fm.get("observed_at", ""),
                     "desc60": desc if len(desc) <= 60 else desc[:59] + "…"})
+    return out
+
+
+def sentences_on_disk(memory: Path) -> Dict[str, Path]:
+    """现有同步条目的「归一句子 → 文件」映射。
+
+    命名方案变了（或 Codex 改了分组名）时用它认领同一条，改名而不是新建第二份；
+    按句子认领而不按文件名里的哈希，下次再改命名也不必迁移逻辑。
+    """
+    out: Dict[str, Path] = {}
+    for p in sorted(memory.glob("codex-*.md")):
+        parts = p.read_text(encoding="utf-8").split("---\n")
+        if len(parts) < 3 or "source: codex" not in parts[1]:
+            continue
+        out[normalize(parts[2].strip().split("\n\n")[0])] = p
     return out
 
 
@@ -328,18 +343,26 @@ def main(argv: List[str]) -> int:
         if belongs(r["cwd"], exact, prefixes):
             sources.append(r)
     entries, masked = build_entries(sources)
-    added = 0
+    existing = sentences_on_disk(memory)
+    added = renamed = 0
     for e in entries:
         path = memory / f"{e['name']}.md"
+        old_path = existing.get(normalize(e["sentence"]))
+        if old_path is not None and old_path != path:
+            old_path.unlink()                          # 同一句子的旧命名文件：改名，不留两份
+            path.write_text(render(e), encoding="utf-8")
+            renamed += 1
+            continue
         if path.exists():
-            continue                                   # 文件名即内容哈希：存在即同一句子，不重写
+            continue                                   # 已有同名文件即同一句子，不重写
         path.write_text(render(e), encoding="utf-8")
         added += 1
     if masked:
         warn(f"{masked} 处疑似凭证已掩码")
     rebuild_index(memory, entries_on_disk(memory))
-    if added:
-        print(f"{DOT} Codex 记忆同步：新增 {added} 条（.memory/codex-*.md）")
+    bits = [f"新增 {added} 条" for _ in (1,) if added] + [f"改名 {renamed} 条" for _ in (1,) if renamed]
+    if bits:
+        print(f"{DOT} Codex 记忆同步：{'，'.join(bits)}（.memory/codex-*.md）")
     return 0
 
 
