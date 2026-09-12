@@ -4,8 +4,10 @@
 用法：memory-sync.py [仓库路径]      缺省为当前所在 git 仓库；对附属 worktree 执行时落点是主工作区的 .memory/
 
 输入：$CODEX_HOME/memories/raw_memories.md（按线程分块）与 rollout_summaries/*.md（按会话一文件）。两者每条都带 cwd。
-输出：<仓根>/.memory/codex-<task_group>-<hash10>.md，一个列表项一条；MEMORY.md 末尾标记段内每条一行索引（只索引 frontmatter 带 source: codex 的文件）。
-不做：不反向写 Codex 存储；不删除来源已消失的条目；不改写句子（只做凭证掩码）。
+输出：<仓根>/.memory/codex-<句子开头>-<hash6>.md，一个列表项一条；MEMORY.md 末尾标记段内每条一行索引（只索引 frontmatter 带 source: codex 的文件）。
+不做：不反向写 Codex 存储；不删除来源已消失的条目；不改写句子（只做凭证掩码）；
+      不收 Reusable knowledge（事实结论按分工进 wiki / docs，不进 .memory）。
+另做：同步后若 .memory 已入库，用 pathspec 偏提交 .memory（RULES_NO_MEMORY_COMMIT=1 关闭）。
 退出码恒为 0（钩子里调用，不能影响会话）；解析问题写 stderr。
 兼容 Python 3.8+，仅标准库。设计见 docs/specs/2026-09-09-工具记忆同步回项目-design.md 第 5 节。
 """
@@ -24,8 +26,10 @@ from typing import Dict, List, Optional, Set, Tuple
 LABEL_TYPE = {                                   # Codex 标签 → .memory 的 type
     "Preference signals": "feedback",            # 用户如何要求干活
     "Failures and how to do differently": "feedback",   # 纠正过的做法
-    "Reusable knowledge": "project",             # 该仓的事实与约束
 }
+# 认识但不进 .memory：Reusable knowledge 是事实结论，按「记忆记做事方式、事实结论进 wiki」的分工不落地；
+# 原文仍在 Codex 自己的记忆里，需要时由人在 ingest 时挑进 wiki 或手写成一条记忆。
+SKIP_LABELS = {"Reusable knowledge"}
 DROP_LABELS = {"References"}                     # 认识但丢弃：Codex 内部指针
 BEGIN, END = "<!-- codex-sync:begin -->", "<!-- codex-sync:end -->"
 MAX_INDEX = 60                                   # Claude 开局只读索引前 200 行，同步段必须封顶
@@ -94,7 +98,10 @@ def header_fields(lines: List[str]) -> Dict[str, str]:
 
 
 def parse_tasks(body: List[str], task_re: "re.Pattern[str]") -> List[Tuple[str, str, str]]:
-    """把任务正文切成 (标签, 句子, 任务标题) 三元组；只认三个标签下的列表项，其余行忽略。"""
+    """把任务正文切成 (标签, 句子, 任务标题) 三元组；只认已知标签下的列表项，其余行忽略。
+
+    SKIP_LABELS 的列表项也收进来，由 build_entries 统一跳过并计数——在这里丢会数不出跳过了几条。
+    """
     items: List[Tuple[str, str, str]] = []
     label: Optional[str] = None
     title = ""
@@ -102,7 +109,7 @@ def parse_tasks(body: List[str], task_re: "re.Pattern[str]") -> List[Tuple[str, 
 
     def flush() -> None:
         nonlocal cur
-        if cur is not None and label in LABEL_TYPE:
+        if cur is not None and (label in LABEL_TYPE or label in SKIP_LABELS):
             items.append((label, cur.strip(), title))
         cur = None
 
@@ -114,7 +121,7 @@ def parse_tasks(body: List[str], task_re: "re.Pattern[str]") -> List[Tuple[str, 
             title = m.group(1).strip()
             continue
         m = re.match(r"^([A-Za-z][A-Za-z ]+):\s*$", line)
-        if m and (m.group(1) in LABEL_TYPE or m.group(1) in DROP_LABELS):
+        if m and (m.group(1) in LABEL_TYPE or m.group(1) in SKIP_LABELS or m.group(1) in DROP_LABELS):
             flush()
             label = m.group(1)
             continue
@@ -193,9 +200,14 @@ def mask(sentence: str) -> Tuple[str, int]:
     return sentence, n
 
 
-def slug(s: str, fallback: str) -> str:
-    s = re.sub(r"[^a-z0-9]+", "-", s.lower()).strip("-")
-    return s or fallback
+def name_slug(sentence: str) -> str:
+    """文件名里的可读前缀：取句子开头的字母数字与汉字，其余压成连字符，最多 12 字符。
+
+    旧方案用 Codex 的 task_group 作前缀，看不出内容、还带工具自己的英文分组名；
+    改用句子开头后，仓内条目与手写记忆一眼可辨。去重仍靠后缀哈希。
+    """
+    s = re.sub(r"[^0-9A-Za-z\u4e00-\u9fff]+", "-", sentence).strip("-")
+    return s[:12].rstrip("-") or "entry"
 
 
 def yaml_str(s: str) -> str:
@@ -222,40 +234,41 @@ def render(entry: dict) -> str:
     )
 
 
-def build_entries(sources: List[dict]) -> Tuple[List[dict], int]:
-    """按句子去重、生成条目；返回 (条目, 掩码计数)。
+def build_entries(sources: List[dict]) -> Tuple[List[dict], int, int]:
+    """按句子去重、生成条目；返回 (条目, 掩码计数, 跳过的事实结论条数)。
 
-    - 分组名按线程统一：任一来源带 task_group 就全线程沿用，缺则用 thread 前 8 位。
     - 线程有 raw 块时，它的会话摘要整份不取：raw 块是 Codex 对同一 rollout 做的记忆提取，摘要是叙事复述，
       换个说法的同一事实按句子去重抓不到（阳性对照里条目翻倍）；只有没有 raw 块的线程才用摘要。
     - 来源按 updated_at 升序处理（相同则 raw 先于摘要），首次出现的句子为准。
     """
-    groups: Dict[str, str] = {}
     has_raw: Set[str] = set()
     for src in sources:
-        if src["task_group"] and src["thread_id"] not in groups:
-            groups[src["thread_id"]] = src["task_group"]
         if src["kind"] == "raw":
             has_raw.add(src["thread_id"])
     seen: Dict[str, dict] = {}
+    skipped: Set[str] = set()
     masked = 0
     for src in sorted(sources, key=lambda s: (s["updated_at"], 0 if s["kind"] == "raw" else 1)):
         tid = src["thread_id"]
         if src["kind"] == "rollout" and tid in has_raw:
             continue
-        group = slug(groups.get(tid, ""), tid[:8])
         for label, sentence, _title in src["items"]:
             sentence, n = mask(sentence)
             masked += n
             key = normalize(sentence)
-            if not key or key in seen:
+            if not key:
                 continue
-            h = hashlib.sha256(key.encode("utf-8")).hexdigest()[:10]
+            if label in SKIP_LABELS:
+                skipped.add(key)                       # 同一句子若在别处是做事方式，下面照常收
+                continue
+            if key in seen:
+                continue
+            h = hashlib.sha256(key.encode("utf-8")).hexdigest()[:6]
             seen[key] = {
-                "name": f"codex-{group}-{h}", "sentence": sentence, "type": LABEL_TYPE[label],
+                "name": f"codex-{name_slug(sentence)}-{h}", "sentence": sentence, "type": LABEL_TYPE[label],
                 "thread_id": tid, "observed_at": src["updated_at"], "description": src["description"],
             }
-    return list(seen.values()), masked
+    return list(seen.values()), masked, len(skipped - set(seen))
 
 
 def entries_on_disk(memory: Path) -> List[dict]:
@@ -275,6 +288,21 @@ def entries_on_disk(memory: Path) -> List[dict]:
         desc = fm.get("description", "").strip('"').replace('\\"', '"')
         out.append({"name": p.stem, "type": fm.get("type", "reference"), "observed_at": fm.get("observed_at", ""),
                     "desc60": desc if len(desc) <= 60 else desc[:59] + "…"})
+    return out
+
+
+def sentences_on_disk(memory: Path) -> Dict[str, Path]:
+    """现有同步条目的「归一句子 → 文件」映射。
+
+    命名方案变了（或 Codex 改了分组名）时用它认领同一条，改名而不是新建第二份；
+    按句子认领而不按文件名里的哈希，下次再改命名也不必迁移逻辑。
+    """
+    out: Dict[str, Path] = {}
+    for p in sorted(memory.glob("codex-*.md")):
+        parts = p.read_text(encoding="utf-8").split("---\n")
+        if len(parts) < 3 or "source: codex" not in parts[1]:
+            continue
+        out[normalize(parts[2].strip().split("\n\n")[0])] = p
     return out
 
 
@@ -299,6 +327,39 @@ def rebuild_index(memory: Path, entries: List[dict]) -> bool:
         return False
     index.write_text(new, encoding="utf-8")
     return True
+
+
+COMMIT_MSG = "chore(memory): 自动提交 .memory 变更（agent-memory-setup / memory-sync）"
+
+
+def commit_memory(root: Path) -> None:
+    """把 .memory 的变更就地提交到当前分支。
+
+    只在 .memory **已入库**时动手：仓库主人把记忆纳入版本控制，才谈得上自动提交；
+    把 .memory 忽略掉的仓（如规则仓自身）天然不受影响。
+    用 pathspec 偏提交，不会顺手带走 index 里别人已暂存的改动（git commit 的老坑）。
+    合并 / cherry-pick / 变基进行中与游离 HEAD 一律不碰，只告警：前者偏提交本就会失败、
+    且等于替人做一半的合并，后者的提交下次检出就找不回来。
+    """
+    if os.environ.get("RULES_NO_MEMORY_COMMIT") == "1":
+        return
+    try:
+        if not git(root, "ls-files", "--", ".memory").strip():
+            return                                     # 未入库：只写文件，不提交
+        if not git(root, "status", "--porcelain", "--", ".memory").strip():
+            return                                     # 无变更：保持静默
+        for name in ("MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "rebase-merge", "rebase-apply"):
+            path = Path(git(root, "rev-parse", "--git-path", name).strip())
+            if (path if path.is_absolute() else root / path).exists():
+                warn(f".memory 有变更但未自动提交：仓库正处于 {name}")
+                return
+        if git(root, "rev-parse", "--abbrev-ref", "HEAD").strip() == "HEAD":
+            warn(".memory 有变更但未自动提交：HEAD 处于游离状态")
+            return
+        git(root, "add", "--", ".memory")
+        git(root, "commit", "-q", "-m", COMMIT_MSG, "--", ".memory")
+    except (subprocess.CalledProcessError, FileNotFoundError) as exc:
+        warn(f".memory 自动提交失败，改动留在工作树：{exc}")
 
 
 def main(argv: List[str]) -> int:
@@ -327,19 +388,29 @@ def main(argv: List[str]) -> int:
             continue
         if belongs(r["cwd"], exact, prefixes):
             sources.append(r)
-    entries, masked = build_entries(sources)
-    added = 0
+    entries, masked, skipped = build_entries(sources)
+    existing = sentences_on_disk(memory)
+    added = renamed = 0
     for e in entries:
         path = memory / f"{e['name']}.md"
+        old_path = existing.get(normalize(e["sentence"]))
+        if old_path is not None and old_path != path:
+            old_path.unlink()                          # 同一句子的旧命名文件：改名，不留两份
+            path.write_text(render(e), encoding="utf-8")
+            renamed += 1
+            continue
         if path.exists():
-            continue                                   # 文件名即内容哈希：存在即同一句子，不重写
+            continue                                   # 已有同名文件即同一句子，不重写
         path.write_text(render(e), encoding="utf-8")
         added += 1
     if masked:
         warn(f"{masked} 处疑似凭证已掩码")
     rebuild_index(memory, entries_on_disk(memory))
-    if added:
-        print(f"{DOT} Codex 记忆同步：新增 {added} 条（.memory/codex-*.md）")
+    bits = [f"新增 {added} 条" for _ in (1,) if added] + [f"改名 {renamed} 条" for _ in (1,) if renamed]
+    if bits:                                           # 无新增时保持静默：钩子每次会话都跑
+        tail = f"；跳过 {skipped} 条事实结论（留在 Codex 自己的记忆里）" if skipped else ""
+        print(f"{DOT} Codex 记忆同步：{'，'.join(bits)}（.memory/codex-*.md）{tail}")
+    commit_memory(root)                                # 连同本次会话之前遗留的记忆改动一并提交
     return 0
 
 

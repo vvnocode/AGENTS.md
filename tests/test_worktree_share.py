@@ -343,11 +343,13 @@ class WorktreeShareTest(unittest.TestCase):
         codex.mkdir(parents=True)
         (codex / "raw_memories.md").write_text(
             "## Thread `dddddddd-0000-0000-0000-000000000004`\nupdated_at: 2026-09-05T00:00:00+00:00\ncwd: "
-            + str(self.root) + "\n\n---\ndescription: d\ntask_group: g\n---\n\n### Task 1: t\n\nReusable knowledge:\n- 句子 DDDD。\n",
+            + str(self.root) + "\n\n---\ndescription: d\ntask_group: g\n---\n\n### Task 1: t\n\nPreference signals:\n- 句子 DDDD。\n",
             encoding="utf-8")
         wt = self.add_worktree("sync")
         proc = self.run_share(wt, env={**self.env(), "CODEX_HOME": str(Path(self.temp_dir.name) / ".codex")})
-        self.assertTrue(list((self.root / ".memory").glob("codex-g-*.md")), proc.stdout + proc.stderr)
+        files = list((self.root / ".memory").glob("codex-*.md"))
+        self.assertTrue(files, proc.stdout + proc.stderr)
+        self.assertIn("句子 DDDD", files[0].read_text(encoding="utf-8"))
 
     # ── 钩子集成 ──
     def test_git_worktree_add_triggers_sharing(self) -> None:
