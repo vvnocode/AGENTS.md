@@ -81,4 +81,4 @@ pwsh -File "$env:USERPROFILE\.agents\skills\agent-memory-setup\worktree-share.ps
 curl -fsSL https://raw.githubusercontent.com/vvnocode/AGENTS.md/main/skills/agent-memory-setup/codex-effective-config.py | python3 - /path/to/repo
 ```
 
-需要本机有 `codex` 可执行文件；不在 PATH 时追加 `--codex /path/to/codex`。Windows 上先把文件存下来再跑：`irm <同一地址> -OutFile "$env:TEMP\codex-effective-config.py"; python "$env:TEMP\codex-effective-config.py" C:\path\to\repo`。
+输出是该目录下 `memories` 的有效值，外加一行结论：`√` 项目层已加载、`×` 未被信任所以项目级 `.codex/` 整体没加载、`·` 该目录没有项目级 `.codex/config.toml`。不按「三项是否为 false」判——Codex 自带记忆照常开启。需要本机有 `codex` 可执行文件；不在 PATH 时追加 `--codex /path/to/codex`。Windows 上先把文件存下来再跑：`irm <同一地址> -OutFile "$env:TEMP\codex-effective-config.py"; python "$env:TEMP\codex-effective-config.py" C:\path\to\repo`。
