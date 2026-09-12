@@ -5,7 +5,7 @@
 - 只同步 cwd 落在目标仓库（根、附属 worktree、已删 worktree 路径前缀）内的线程；另一仓库的句子一字不出现
 - 一个列表项一条文件，frontmatter 与 Claude 自动记忆同形；三个标签映射 feedback / feedback / project；References 丢弃
 - 同一句子跨线程只一条；线程有 raw 块就整份不取其会话摘要（复述不进来），没有 raw 块的线程才用摘要；文件名是内容哈希，重排列表项不新增文件
-- 索引段：放 MEMORY.md 末尾、用户原行不动、每条一行同形、超 60 行截断并告警
+- 索引段：放 MEMORY.md 末尾、用户原行不动、每条一行同形、超 60 行截断并告警；只收 frontmatter 带 source: codex 的文件，手写的同前缀条目不进段
 - 幂等：重跑字节不变；新增列表项只多一文件一索引行
 - 掩码：含 token 的句子被替换为 [已掩码]
 - 无 .memory / 无 CODEX_HOME/memories：退出 0、无输出、不建目录
@@ -341,6 +341,23 @@ class MemorySyncTest(unittest.TestCase):
         pattern = r"^- \[.+\]\(codex-[a-z0-9-]+-[0-9a-f]{10}\.md\) — (feedback|project)·\d{4}-\d{2}-\d{2}$"
         self.assertTrue(all(re.match(pattern, line) for line in lines), lines)
         self.assertLess(idx.index("·2026-09-02"), idx.index("·2026-09-01"), "按 observed_at 倒序")
+
+    def test_handwritten_codex_prefixed_file_is_not_taken_as_generated(self) -> None:
+        """认生成物按 frontmatter 的 source，不按文件名前缀：手写的 codex-*.md 不进同步段，也不被改写。"""
+        hand = self.repo_a / ".memory" / "codex-memory-location.md"
+        hand.write_text(
+            "---\nname: codex-memory-location\ndescription: 手写条目：Codex 记忆放在哪\n"
+            "metadata:\n  type: reference\n---\n\nCodex 的记忆在仓库外 ~/.codex/memories/。\n",
+            encoding="utf-8",
+        )
+        before = hand.read_bytes()
+        self.write_codex()
+        self.run_sync(self.repo_a)
+        idx = self.index()
+        section = idx[idx.index("<!-- codex-sync:begin -->"):]
+        self.assertNotIn("codex-memory-location.md", section, "手写条目不该出现在同步段")
+        self.assertIn("codex-repo-a-wiring-", section, "真同步产物仍应进段")
+        self.assertEqual(before, hand.read_bytes(), "手写条目不该被改写")
 
     def test_index_is_capped_at_60_with_warning(self) -> None:
         bullets = "\n".join(f"- 批量句子第 {i} 条。" for i in range(70))

@@ -4,7 +4,7 @@
 用法：memory-sync.py [仓库路径]      缺省为当前所在 git 仓库；对附属 worktree 执行时落点是主工作区的 .memory/
 
 输入：$CODEX_HOME/memories/raw_memories.md（按线程分块）与 rollout_summaries/*.md（按会话一文件）。两者每条都带 cwd。
-输出：<仓根>/.memory/codex-<task_group>-<hash10>.md，一个列表项一条；MEMORY.md 末尾标记段内每条一行索引。
+输出：<仓根>/.memory/codex-<task_group>-<hash10>.md，一个列表项一条；MEMORY.md 末尾标记段内每条一行索引（只索引 frontmatter 带 source: codex 的文件）。
 不做：不反向写 Codex 存储；不删除来源已消失的条目；不改写句子（只做凭证掩码）。
 退出码恒为 0（钩子里调用，不能影响会话）；解析问题写 stderr。
 兼容 Python 3.8+，仅标准库。设计见 docs/specs/2026-09-09-工具记忆同步回项目-design.md 第 5 节。
@@ -259,13 +259,19 @@ def build_entries(sources: List[dict]) -> Tuple[List[dict], int]:
 
 
 def entries_on_disk(memory: Path) -> List[dict]:
-    """读回已有的 codex-*.md 供索引用（索引总是反映磁盘全集，用户删了文件下次就收敛）。"""
+    """读回已有的同步条目供索引用（索引总是反映磁盘全集，用户删了文件下次就收敛）。
+
+    认生成物只看 frontmatter 里的 source: codex，不看文件名前缀：手写条目也可能叫 codex-*.md，
+    误收会让同一条既出现在用户自己的索引行、又出现在同步段里。
+    """
     out: List[dict] = []
     for p in sorted(memory.glob("codex-*.md")):
         parts = p.read_text(encoding="utf-8").split("---\n")
         if len(parts) < 3:
             continue
         fm = dict(re.findall(r"^\s*([a-z_]+): (.*)$", parts[1], flags=re.M))
+        if fm.get("source", "").strip() != "codex":
+            continue                                   # 手写的同前缀条目，不是本脚本的产物
         desc = fm.get("description", "").strip('"').replace('\\"', '"')
         out.append({"name": p.stem, "type": fm.get("type", "reference"), "observed_at": fm.get("observed_at", ""),
                     "desc60": desc if len(desc) <= 60 else desc[:59] + "…"})
