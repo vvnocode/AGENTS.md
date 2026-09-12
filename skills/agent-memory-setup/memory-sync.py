@@ -5,7 +5,8 @@
 
 输入：$CODEX_HOME/memories/raw_memories.md（按线程分块）与 rollout_summaries/*.md（按会话一文件）。两者每条都带 cwd。
 输出：<仓根>/.memory/codex-<句子开头>-<hash6>.md，一个列表项一条；MEMORY.md 末尾标记段内每条一行索引（只索引 frontmatter 带 source: codex 的文件）。
-不做：不反向写 Codex 存储；不删除来源已消失的条目；不改写句子（只做凭证掩码）。
+不做：不反向写 Codex 存储；不删除来源已消失的条目；不改写句子（只做凭证掩码）；
+      不收 Reusable knowledge（事实结论按分工进 wiki / docs，不进 .memory）。
 退出码恒为 0（钩子里调用，不能影响会话）；解析问题写 stderr。
 兼容 Python 3.8+，仅标准库。设计见 docs/specs/2026-09-09-工具记忆同步回项目-design.md 第 5 节。
 """
@@ -24,8 +25,10 @@ from typing import Dict, List, Optional, Set, Tuple
 LABEL_TYPE = {                                   # Codex 标签 → .memory 的 type
     "Preference signals": "feedback",            # 用户如何要求干活
     "Failures and how to do differently": "feedback",   # 纠正过的做法
-    "Reusable knowledge": "project",             # 该仓的事实与约束
 }
+# 认识但不进 .memory：Reusable knowledge 是事实结论，按「记忆记做事方式、事实结论进 wiki」的分工不落地；
+# 原文仍在 Codex 自己的记忆里，需要时由人在 ingest 时挑进 wiki 或手写成一条记忆。
+SKIP_LABELS = {"Reusable knowledge"}
 DROP_LABELS = {"References"}                     # 认识但丢弃：Codex 内部指针
 BEGIN, END = "<!-- codex-sync:begin -->", "<!-- codex-sync:end -->"
 MAX_INDEX = 60                                   # Claude 开局只读索引前 200 行，同步段必须封顶
@@ -94,7 +97,10 @@ def header_fields(lines: List[str]) -> Dict[str, str]:
 
 
 def parse_tasks(body: List[str], task_re: "re.Pattern[str]") -> List[Tuple[str, str, str]]:
-    """把任务正文切成 (标签, 句子, 任务标题) 三元组；只认三个标签下的列表项，其余行忽略。"""
+    """把任务正文切成 (标签, 句子, 任务标题) 三元组；只认已知标签下的列表项，其余行忽略。
+
+    SKIP_LABELS 的列表项也收进来，由 build_entries 统一跳过并计数——在这里丢会数不出跳过了几条。
+    """
     items: List[Tuple[str, str, str]] = []
     label: Optional[str] = None
     title = ""
@@ -102,7 +108,7 @@ def parse_tasks(body: List[str], task_re: "re.Pattern[str]") -> List[Tuple[str, 
 
     def flush() -> None:
         nonlocal cur
-        if cur is not None and label in LABEL_TYPE:
+        if cur is not None and (label in LABEL_TYPE or label in SKIP_LABELS):
             items.append((label, cur.strip(), title))
         cur = None
 
@@ -114,7 +120,7 @@ def parse_tasks(body: List[str], task_re: "re.Pattern[str]") -> List[Tuple[str, 
             title = m.group(1).strip()
             continue
         m = re.match(r"^([A-Za-z][A-Za-z ]+):\s*$", line)
-        if m and (m.group(1) in LABEL_TYPE or m.group(1) in DROP_LABELS):
+        if m and (m.group(1) in LABEL_TYPE or m.group(1) in SKIP_LABELS or m.group(1) in DROP_LABELS):
             flush()
             label = m.group(1)
             continue
@@ -227,8 +233,8 @@ def render(entry: dict) -> str:
     )
 
 
-def build_entries(sources: List[dict]) -> Tuple[List[dict], int]:
-    """按句子去重、生成条目；返回 (条目, 掩码计数)。
+def build_entries(sources: List[dict]) -> Tuple[List[dict], int, int]:
+    """按句子去重、生成条目；返回 (条目, 掩码计数, 跳过的事实结论条数)。
 
     - 线程有 raw 块时，它的会话摘要整份不取：raw 块是 Codex 对同一 rollout 做的记忆提取，摘要是叙事复述，
       换个说法的同一事实按句子去重抓不到（阳性对照里条目翻倍）；只有没有 raw 块的线程才用摘要。
@@ -239,6 +245,7 @@ def build_entries(sources: List[dict]) -> Tuple[List[dict], int]:
         if src["kind"] == "raw":
             has_raw.add(src["thread_id"])
     seen: Dict[str, dict] = {}
+    skipped: Set[str] = set()
     masked = 0
     for src in sorted(sources, key=lambda s: (s["updated_at"], 0 if s["kind"] == "raw" else 1)):
         tid = src["thread_id"]
@@ -248,14 +255,19 @@ def build_entries(sources: List[dict]) -> Tuple[List[dict], int]:
             sentence, n = mask(sentence)
             masked += n
             key = normalize(sentence)
-            if not key or key in seen:
+            if not key:
+                continue
+            if label in SKIP_LABELS:
+                skipped.add(key)                       # 同一句子若在别处是做事方式，下面照常收
+                continue
+            if key in seen:
                 continue
             h = hashlib.sha256(key.encode("utf-8")).hexdigest()[:6]
             seen[key] = {
                 "name": f"codex-{name_slug(sentence)}-{h}", "sentence": sentence, "type": LABEL_TYPE[label],
                 "thread_id": tid, "observed_at": src["updated_at"], "description": src["description"],
             }
-    return list(seen.values()), masked
+    return list(seen.values()), masked, len(skipped - set(seen))
 
 
 def entries_on_disk(memory: Path) -> List[dict]:
@@ -342,7 +354,7 @@ def main(argv: List[str]) -> int:
             continue
         if belongs(r["cwd"], exact, prefixes):
             sources.append(r)
-    entries, masked = build_entries(sources)
+    entries, masked, skipped = build_entries(sources)
     existing = sentences_on_disk(memory)
     added = renamed = 0
     for e in entries:
@@ -361,8 +373,9 @@ def main(argv: List[str]) -> int:
         warn(f"{masked} 处疑似凭证已掩码")
     rebuild_index(memory, entries_on_disk(memory))
     bits = [f"新增 {added} 条" for _ in (1,) if added] + [f"改名 {renamed} 条" for _ in (1,) if renamed]
-    if bits:
-        print(f"{DOT} Codex 记忆同步：{'，'.join(bits)}（.memory/codex-*.md）")
+    if bits:                                           # 无新增时保持静默：钩子每次会话都跑
+        tail = f"；跳过 {skipped} 条事实结论（留在 Codex 自己的记忆里）" if skipped else ""
+        print(f"{DOT} Codex 记忆同步：{'，'.join(bits)}（.memory/codex-*.md）{tail}")
     return 0
 
 

@@ -56,10 +56,10 @@ task_outcome: success
 Preference signals:
 - 用户说“先不push”，说明默认保持本地，不推送远端。
 - 用户要求提交前先跑全量测试。
+- 部署令牌 ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ012345 写在 .env 里。
 
 Reusable knowledge:
 - 本仓测试命令是 `python3 -m unittest discover -s tests`。
-- 部署令牌 ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ012345 写在 .env 里。
 
 Failures and how to do differently:
 - 初次只改 CSS 后真机仍无响应；今后触控修复应同时加入即时反馈。
@@ -86,8 +86,6 @@ keywords: a
 
 Preference signals:
 - 用户要求提交前先跑全量测试。
-
-Reusable knowledge:
 - worktree 里 .memory 是软链。
 
 ## Thread `cccccccc-0000-0000-0000-000000000003`
@@ -107,7 +105,7 @@ keywords: b
 
 ### Task 1: b
 
-Reusable knowledge:
+Preference signals:
 - 仓 B 专属句子 ZZZZ 不应出现在仓 A。
 """
 
@@ -129,14 +127,14 @@ Outcome: success
 Preference signals:
 - 用户说“先不push”，说明默认保持本地，不推送远端。
 
-Reusable knowledge:
+Preference signals:
 - 换个说法的同一事实 PARAPHRASE：测试用 unittest discover 跑。
 
 ## Task 2: 信任配置
 
 Outcome: success
 
-Reusable knowledge:
+Preference signals:
 - 摘要独有句子：设置 Codex 信任要写绝对路径。
 """
 
@@ -153,7 +151,7 @@ git_branch: main
 
 Outcome: success
 
-Reusable knowledge:
+Preference signals:
 - 无 raw 块线程的摘要句子 ONLYROLLOUT。
 """
 
@@ -247,7 +245,7 @@ class MemorySyncTest(unittest.TestCase):
         self.assertIn(self.NEW_MARK, proc.stdout)
 
     def test_one_bullet_one_file_with_claude_frontmatter(self) -> None:
-        """一个列表项一文件；frontmatter 键顺序固定；三个标签映射 feedback/feedback/project；References 丢弃。"""
+        """一个列表项一文件；frontmatter 键顺序固定；两个保留标签都映射 feedback；References 丢弃。"""
         self.write_codex()
         self.run_sync(self.repo_a)
         p, text = self.find("默认保持本地")
@@ -258,7 +256,6 @@ class MemorySyncTest(unittest.TestCase):
             r"^name: codex-[^\n]+-[0-9a-f]{6}\ndescription: .+\nmetadata:\n  type: feedback\n  source: codex\n"
             r"  thread_id: aaaaaaaa-0000-0000-0000-000000000001\n  observed_at: 2026-09-01T10:00:00\+00:00\n$",
         )
-        self.assertIn("  type: project", self.find("测试命令是")[1])
         self.assertIn("  type: feedback", self.find("触控修复")[1])
         texts = [f.read_text(encoding="utf-8") for f in self.codex_files()]
         self.assertFalse(any("docs/handover.md" in t for t in texts), "References 应丢弃")
@@ -291,6 +288,17 @@ class MemorySyncTest(unittest.TestCase):
         self.assertEqual(p.name, q.name)
         self.assertIn(f"name: {q.stem}\n", qtext)
         self.assertNotIn("codex-repo-a-wiring-0123456789", self.index())
+
+    def test_reusable_knowledge_is_not_synced(self) -> None:
+        """Reusable knowledge 是事实结论，按分工不进 .memory；跳过条数在有新增时一并报出。"""
+        self.write_codex()
+        proc = self.run_sync(self.repo_a)
+        texts = "\n".join(p.read_text(encoding="utf-8") for p in self.codex_files())
+        self.assertNotIn("本仓测试命令是", texts, "事实结论不该落地")
+        self.assertNotIn("本仓测试命令是", self.index())
+        self.assertIn("默认保持本地", texts, "做事方式照常落地")
+        self.assertIn("触控修复", texts)
+        self.assertIn("跳过", proc.stdout)
 
     def test_no_memory_dir_is_silent_noop(self) -> None:
         """仓 B 没有 .memory：退出 0、无输出、不建目录。"""
