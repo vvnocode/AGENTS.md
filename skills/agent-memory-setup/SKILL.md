@@ -43,7 +43,7 @@ powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\.agents\skills\agent-
 ## 验证
 
 - Claude：在仓库目录开会话，问「不用工具，复述项目指令里关于记忆写入位置的那条」；答不出就是 `CLAUDE.md` 没加载。
-- Codex：`./codex-effective-config.py <仓库绝对路径>`（Windows：`python codex-effective-config.py <路径>`）。它走 app-server 的 `config/read` 按 cwd 解析项目层，并抓 stderr 里的未信任警告。**不要用 `codex doctor`**，它只报全局值。
+- Codex：`./codex-effective-config.py <仓库绝对路径>`（Windows：`python codex-effective-config.py <路径>`）。它走 app-server 的 `config/read` 按 cwd 解析项目层，并抓 stderr 里的未信任警告。结论行三选一：`√` 项目层已加载、`×` 该目录未被信任所以项目级 `.codex/` 整体没加载、`·` 该目录压根没有项目级 `.codex/config.toml`（打印的是全局层的值）。`memories` 的取值只作参考，别拿「三项是否为 false」当判据（Codex 自带记忆现在照常开启）。**不要用 `codex doctor`**，它只报全局值。
 - dsh / opencode：开会话问同一问题，它们读 `AGENTS.md`。
 - 记忆可见性：在 `MEMORY.md` 放一条带口令的索引行，问各工具读到几条。
 - Codex 记忆同步：`memory-sync.sh <仓根>`（Windows：`memory-sync.ps1`）后 `ls .memory/codex-*.md`，`MEMORY.md` 末尾出现 `<!-- codex-sync:begin -->` 段。无输出、无文件多半是 Codex 还没生成，见陷阱表。
