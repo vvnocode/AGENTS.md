@@ -9,6 +9,7 @@
 - 幂等：重跑字节不变；新增列表项只多一文件一索引行
 - 掩码：含 token 的句子被替换为 [已掩码]
 - 无 .memory / 无 CODEX_HOME/memories：退出 0、无输出、不建目录
+- 自动提交：.memory 已入库才提交，pathspec 偏提交不带走别人已暂存的改动；未入库 / 合并进行中 / 开关关闭时不提交
 - 对附属 worktree 执行：写到主工作区 .memory
 - .sh / .ps1 包装透传（.ps1 子类）
 """
@@ -20,6 +21,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 SKILL = ROOT / "skills" / "agent-memory-setup"
@@ -177,6 +179,8 @@ class MemorySyncTest(unittest.TestCase):
         for r in (self.repo_a, self.repo_b):
             r.mkdir()
             self.git(r, "init", "-q", "-b", "main")
+            self.git(r, "config", "user.name", "test")
+            self.git(r, "config", "user.email", "test@example.com")
             (r / ".gitignore").write_text(".worktrees/\n", encoding="utf-8")
             self.git(r, "add", "-A")
             self.git(r, "commit", "-q", "-m", "init")
@@ -400,6 +404,51 @@ class MemorySyncTest(unittest.TestCase):
         section = self.index()[self.index().index("<!-- codex-sync:begin -->"):]
         self.assertEqual(sum(line.startswith("- [") for line in section.splitlines()), 60)
         self.assertIn("另有", section)
+        self.assertIn(self.WARN_MARK, proc.stderr)
+
+    # ── T3：仓内记忆的自动提交 ──
+    def track_memory(self) -> str:
+        """把 .memory 纳入版本控制，返回当时的 HEAD。"""
+        self.git(self.repo_a, "add", "--", ".memory")
+        self.git(self.repo_a, "commit", "-q", "-m", "memory")
+        return self.git(self.repo_a, "rev-parse", "HEAD").strip()
+
+    def test_commits_memory_when_tracked_and_keeps_other_staged_changes(self) -> None:
+        """.memory 已入库：同步后就地提交；index 里别人已暂存的改动不被顺手带走。"""
+        head = self.track_memory()
+        (self.repo_a / "other.txt").write_text("x\n", encoding="utf-8")
+        self.git(self.repo_a, "add", "--", "other.txt")
+        self.write_codex()
+        self.run_sync(self.repo_a)
+        self.assertNotEqual(head, self.git(self.repo_a, "rev-parse", "HEAD").strip(), "应产生一个提交")
+        # quotePath=false：文件名含汉字时 git 默认输出八进制转义，断言会看不懂
+        files = self.git(self.repo_a, "-c", "core.quotePath=false", "show", "--name-only", "--format=", "HEAD").split()
+        self.assertTrue(files and all(f.startswith(".memory/") for f in files), files)
+        self.assertIn("other.txt", self.git(self.repo_a, "diff", "--cached", "--name-only"), "别人已暂存的改动应还在暂存区")
+        self.assertEqual("", self.git(self.repo_a, "status", "--porcelain", "--", ".memory").strip())
+
+    def test_does_not_commit_when_memory_untracked(self) -> None:
+        """.memory 未入库（如规则仓自己把它 gitignore）：只写文件，不提交。"""
+        head = self.git(self.repo_a, "rev-parse", "HEAD").strip()
+        self.write_codex()
+        self.run_sync(self.repo_a)
+        self.assertEqual(head, self.git(self.repo_a, "rev-parse", "HEAD").strip())
+        self.assertIn("?? .memory/", self.git(self.repo_a, "status", "--porcelain"))
+
+    def test_env_switch_disables_commit(self) -> None:
+        head = self.track_memory()
+        self.write_codex()
+        with mock.patch.dict(os.environ, {"RULES_NO_MEMORY_COMMIT": "1"}):
+            self.run_sync(self.repo_a)
+        self.assertEqual(head, self.git(self.repo_a, "rev-parse", "HEAD").strip())
+
+    def test_skips_commit_while_merge_in_progress(self) -> None:
+        """合并进行中不提交：偏提交本身会失败，且此时提交等于替人做一半的合并。"""
+        head = self.track_memory()
+        (self.repo_a / ".git" / "MERGE_HEAD").write_text(head + "\n", encoding="utf-8")
+        self.write_codex()
+        proc = self.run_sync(self.repo_a)
+        self.assertEqual(head, self.git(self.repo_a, "rev-parse", "HEAD").strip())
         self.assertIn(self.WARN_MARK, proc.stderr)
 
     def test_secrets_are_masked(self) -> None:

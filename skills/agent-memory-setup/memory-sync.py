@@ -7,6 +7,7 @@
 输出：<仓根>/.memory/codex-<句子开头>-<hash6>.md，一个列表项一条；MEMORY.md 末尾标记段内每条一行索引（只索引 frontmatter 带 source: codex 的文件）。
 不做：不反向写 Codex 存储；不删除来源已消失的条目；不改写句子（只做凭证掩码）；
       不收 Reusable knowledge（事实结论按分工进 wiki / docs，不进 .memory）。
+另做：同步后若 .memory 已入库，用 pathspec 偏提交 .memory（RULES_NO_MEMORY_COMMIT=1 关闭）。
 退出码恒为 0（钩子里调用，不能影响会话）；解析问题写 stderr。
 兼容 Python 3.8+，仅标准库。设计见 docs/specs/2026-09-09-工具记忆同步回项目-design.md 第 5 节。
 """
@@ -328,6 +329,39 @@ def rebuild_index(memory: Path, entries: List[dict]) -> bool:
     return True
 
 
+COMMIT_MSG = "chore(memory): 自动提交 .memory 变更（agent-memory-setup / memory-sync）"
+
+
+def commit_memory(root: Path) -> None:
+    """把 .memory 的变更就地提交到当前分支。
+
+    只在 .memory **已入库**时动手：仓库主人把记忆纳入版本控制，才谈得上自动提交；
+    把 .memory 忽略掉的仓（如规则仓自身）天然不受影响。
+    用 pathspec 偏提交，不会顺手带走 index 里别人已暂存的改动（git commit 的老坑）。
+    合并 / cherry-pick / 变基进行中与游离 HEAD 一律不碰，只告警：前者偏提交本就会失败、
+    且等于替人做一半的合并，后者的提交下次检出就找不回来。
+    """
+    if os.environ.get("RULES_NO_MEMORY_COMMIT") == "1":
+        return
+    try:
+        if not git(root, "ls-files", "--", ".memory").strip():
+            return                                     # 未入库：只写文件，不提交
+        if not git(root, "status", "--porcelain", "--", ".memory").strip():
+            return                                     # 无变更：保持静默
+        for name in ("MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "rebase-merge", "rebase-apply"):
+            path = Path(git(root, "rev-parse", "--git-path", name).strip())
+            if (path if path.is_absolute() else root / path).exists():
+                warn(f".memory 有变更但未自动提交：仓库正处于 {name}")
+                return
+        if git(root, "rev-parse", "--abbrev-ref", "HEAD").strip() == "HEAD":
+            warn(".memory 有变更但未自动提交：HEAD 处于游离状态")
+            return
+        git(root, "add", "--", ".memory")
+        git(root, "commit", "-q", "-m", COMMIT_MSG, "--", ".memory")
+    except (subprocess.CalledProcessError, FileNotFoundError) as exc:
+        warn(f".memory 自动提交失败，改动留在工作树：{exc}")
+
+
 def main(argv: List[str]) -> int:
     target = Path(argv[1]) if len(argv) > 1 else Path.cwd()
     root = repo_root(target)
@@ -376,6 +410,7 @@ def main(argv: List[str]) -> int:
     if bits:                                           # 无新增时保持静默：钩子每次会话都跑
         tail = f"；跳过 {skipped} 条事实结论（留在 Codex 自己的记忆里）" if skipped else ""
         print(f"{DOT} Codex 记忆同步：{'，'.join(bits)}（.memory/codex-*.md）{tail}")
+    commit_memory(root)                                # 连同本次会话之前遗留的记忆改动一并提交
     return 0
 
 
