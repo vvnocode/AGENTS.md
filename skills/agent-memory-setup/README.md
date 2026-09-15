@@ -71,7 +71,7 @@ Windows：
 pwsh -File "$env:USERPROFILE\.agents\skills\agent-memory-setup\worktree-share.ps1" link C:\path\to\worktree
 ```
 
-仓根放 `.worktree-share` 增删共享项（一行一项，`#` 注释，`!` 前缀剔除内置项）。机制与陷阱见 [SKILL.md](SKILL.md)「worktree 里效果不变」。
+仓根放 `.worktree-share` 增删共享项（一行一项，`#` 注释，`!` 前缀剔除内置项）。共享只在 link 时做一次：之后在 worktree 里新建的被忽略文件（软链目录之下的除外）与对复制文件的改动不会回到根工作区，而 `git worktree remove` 不检查被忽略文件、不加 `--force` 也会直接删掉，删 worktree 前要先列出并回收。机制、陷阱与回收命令见 [SKILL.md](SKILL.md)「worktree 里效果不变」。
 
 ## 验证 Codex 有效配置
 

@@ -26,6 +26,11 @@ Same contract as worktree-share.sh (read its header for the rationale):
   - list = built-in list + .worktree-share at the repo root (one path per line, # comments, ! removes a built-in item;
     the main worktree's and the target worktree's copies are merged).
 
+Not a continuous sync: sharing happens once, at link time, from what the main worktree holds then. Ignored entries
+created in the worktree later (anything written under a linked directory excepted) and edits to copied files stay in
+the worktree only, and `git worktree remove` does not check ignored files, so it deletes them even without --force.
+Listing and recovering them before removing a worktree: see the worktree section of SKILL.md.
+
 Pure ASCII on purpose (same reason as install.ps1). The one non-ASCII string written to disk (the info/exclude comment)
 is embedded as base64 UTF-8, byte-identical to what worktree-share.sh writes.
 #>

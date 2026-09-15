@@ -92,6 +92,17 @@ powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\.agents\skills\agent-
 - **自定义**：仓根放 `.worktree-share`，一行一项，`#` 注释，`!` 前缀剔除内置项（如 `!.env`），可带通配。目录本身含入库文件（如 `repos/.gitkeep` 入库、其下克隆被忽略）时展开为其下被忽略的条目逐条共享。
 - **尾斜杠规则**：`.gitignore` 里 `.memory/` 这类带尾斜杠的规则只匹配真实目录、不匹配软链。脚本共享后复核，未被忽略就往仓库共用的 `.git/info/exclude` 补一行不带尾斜杠的路径，不碰团队 `.gitignore`。
 - **手动**：接线前建的 worktree，或钩子没装的仓库：`bash ~/.agents/skills/agent-memory-setup/worktree-share.sh link <worktree路径>`；Windows `pwsh -File "$env:USERPROFILE\.agents\skills\agent-memory-setup\worktree-share.ps1" link <worktree路径>`。钩子里写的也是这个全局发现根路径（两种安装方式都有，不随开发 clone 或临时 worktree 移动）。对根工作区执行只提示不动作。
+- **删 worktree 前先回收**：共享只在 link 那一刻做一次，展开也只看根工作区当时已有的被忽略条目。之后在 worktree 里新建、又不在软链目录之下的被忽略目录或文件（如 `repos/.gitkeep` 入库时新 clone 进 `repos/` 的仓库、新周期的采集正文）是 worktree 自己的真实文件，对复制文件的改动（如私有页）也只留在 worktree，`git status` 都看不到。`git worktree remove` 只拦已跟踪文件的修改和未被忽略的未跟踪文件，**不检查被忽略文件**：不加 `--force` 也执行成功并把它们一并删除（软链只删链接，根工作区不受影响）。经软链写进根工作区的状态与只留在 worktree 的数据会就此脱节，例如采集水位线已推进、对应正文却随 worktree 删掉，增量采集补不回来。删之前先列出，逐条确认后回收（`WT`、`ROOT` 为绝对路径；macOS / Linux）：
+
+  ```bash
+  # 列出 worktree 里被忽略的真实条目，软链除外。-z 取原样路径：不加时含空格、引号、反斜杠的路径会被加引号转义
+  git -C "$WT" status --ignored=matching --porcelain -z | tr '\0' '\n' | sed -n 's/^!! //p' | sed 's#/$##' | while IFS= read -r p; do [ -L "$WT/$p" ] || printf '%s\n' "$p"; done
+  # 回收一条 p。--safe-links 跳过绝对路径软链（共享建的软链都是）：macOS 自带的 openrsync 即使加了 --ignore-existing，
+  # 遇到根工作区的同名目录也会拿软链去替换，空目录被静默换掉，非空目录报错
+  mkdir -p "$(dirname "$ROOT/$p")" && rsync -a --safe-links --ignore-existing "$WT/$p" "$(dirname "$ROOT/$p")/"
+  ```
+
+  `--ignore-existing` 带不回对根工作区已有副本的改动，这类要人工比对；列表里 `.claude/settings.local.json`、`.DS_Store` 这类通常无需回收。worktree 未删或分支未合入时 `git branch -d` 会拒绝，顺序是回收、删 worktree、再删分支。
 
 ## 常见错误
 
