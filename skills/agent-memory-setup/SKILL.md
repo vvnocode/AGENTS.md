@@ -64,6 +64,7 @@ powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\.agents\skills\agent-
 | Codex Memories 没开 | 全局 `[features] memories = true` 缺失（默认关，EEA / 英国 / 瑞士不可用），`~/.codex/memories` 为空，同步永远无内容 | setup 收尾会提示；在全局 `config.toml` 或 App 设置里开，脚本不代开 |
 | 接线前建的 worktree | 没经过钩子，根工作区未入库的规则文件、`.memory`、项目级 skills、`.codex/config.toml` 都不在 | `git worktree add` 只检出入库文件：手动执行一次 `worktree-share.sh link <worktree路径>`（Windows 用 `.ps1`），见下节 |
 | 仓库设了 `core.hooksPath` 或已有别人的 `post-checkout` | setup 不覆盖，钩子没装，新 worktree 不共享 | 按 setup 输出的接入指引，在那份钩子的 flag=1 分支末尾追加一行调用 `worktree-share.sh` |
+| `.git/hooks/post-checkout` 是悬空软链（如旧版 llm-wiki bootstrap 链到后来被删除的 `scripts/hooks/post-checkout`） | setup 只告警、不写入，钩子没装；照常写入会跟随软链，在工作区建出未跟踪的钩子文件 | 确认该软链无用后删除，再重跑 setup |
 | 团队仓里接线文件未入库也未忽略（`git status` 里是 `??`） | 脚本视为待提交、不共享，只告警 | 要么提交，要么写进仓库本地的 `.git/info/exclude`（不碰团队 `.gitignore`）再建 worktree |
 | Windows 没开开发者模式、也不是管理员 | 建不了目录符号链接：`.memory`、skills 目录不共享，脚本逐项告警；`.claude` 等工具配置目录退回到只复制其下的文件（如 `.codex/config.toml`），子目录仍不共享 | 设置 → 开发者选项 → 开发者模式，或提权后重跑共享脚本。不要手工建目录联接顶上：git 2.37.3 实测 `git worktree remove` 会穿过联接删掉根工作区的内容；符号链接则安全（`git worktree remove`、`rm -rf`、`rmdir /s` 都只删链接） |
 | 规则只写在 Claude 那侧 | Codex / dsh / opencode 不知道 `.memory/` 存在，各写各的或不写 | 不能省：全局规则或 `--with-rule` 二选一 |

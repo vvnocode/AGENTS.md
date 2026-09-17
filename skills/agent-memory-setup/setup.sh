@@ -221,7 +221,11 @@ elif [ -n "$(git config --get core.hooksPath || true)" ]; then
 else
     HOOK="$(git rev-parse --git-path hooks)/post-checkout"
     mkdir -p "$(dirname "$HOOK")"
-    if [ -f "$HOOK" ] && ! head -5 "$HOOK" | grep -qxF "$HOOK_MARK"; then
+    if [ -L "$HOOK" ] && [ ! -e "$HOOK" ]; then
+        # 悬空软链（如旧版 llm-wiki bootstrap 链到后来被删除的 scripts/hooks/post-checkout）：[ -f ] 对它为假，
+        # 而下面的 > 重定向会跟随软链、在目标位置建出文件（落在工作区里就是未跟踪文件），所以不写、只告警
+        warn "$HOOK 是悬空软链（指向 $(readlink "$HOOK")），未改动：确认无用后删除（rm \"$HOOK\"）再重跑本脚本"
+    elif [ -f "$HOOK" ] && ! head -5 "$HOOK" | grep -qxF "$HOOK_MARK"; then
         warn "$HOOK 已存在且不是本 skill 写的，未覆盖：请在其 flag=1 分支末尾追加：$HOOK_HINT"
     else
         sed "s|__SKILL_DIR__|$SKILL_DIR|" "$SKILL_DIR/hooks/post-checkout" > "$HOOK"

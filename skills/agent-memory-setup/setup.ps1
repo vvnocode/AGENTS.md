@@ -270,13 +270,25 @@ cannot settle (AGENTS.md and CLAUDE.md both plain files with different content) 
             $hooksDir = [string](Invoke-Git rev-parse --git-path hooks)
             $hook = Join-Path (Get-RepoFile $hooksDir) 'post-checkout'
             New-Item -ItemType Directory -Force (Split-Path $hook -Parent) | Out-Null
+            # A dangling symlink at the hook path (an old llm-wiki bootstrap linked it to scripts/hooks/post-checkout,
+            # which was later deleted) must be left alone: Test-Path reports the link itself as a leaf, reading it throws,
+            # and WriteAllText follows the link and creates the target file inside the work tree. The link carries the
+            # ReparsePoint attribute; a dangling one cannot be opened.
+            $dangling = $false
+            try {
+                if (([IO.File]::GetAttributes($hook) -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                    try { [IO.File]::OpenRead($hook).Dispose() } catch { $dangling = $true }
+                }
+            } catch { }   # nothing at the hook path yet
             $foreign = $false
-            if (Test-Path -LiteralPath $hook -PathType Leaf) {
+            if ((-not $dangling) -and (Test-Path -LiteralPath $hook -PathType Leaf)) {
                 $head = @((Read-File $hook) -split "`r?`n")
                 if ($head.Count -gt 5) { $head = $head[0..4] }
                 $foreign = -not ($head -contains $HookMark)
             }
-            if ($foreign) {
+            if ($dangling) {
+                Warn "$hook is a dangling symlink, left unchanged: delete it once you confirm it is unused, then rerun"
+            } elseif ($foreign) {
                 Warn "$hook exists and was not written by this skill, left unchanged: append at the end of its flag=1 branch: $HookHint"
             } else {
                 $template = [IO.File]::ReadAllText((Join-Path (Join-Path $SkillDir 'hooks') 'post-checkout'), [Text.Encoding]::UTF8)
