@@ -279,6 +279,23 @@ class AgentMemorySetupTest(unittest.TestCase):
         self.assertIn(self.WARN_MARK, proc.stdout)
         self.assertIn("worktree-share", proc.stdout)
 
+    def test_dangling_hook_symlink_is_not_written_through(self) -> None:
+        """钩子位置是悬空软链（旧版 llm-wiki bootstrap 链到的 scripts/hooks/post-checkout 已被删除）：
+        不经软链写入——写入会跟随软链在工作区建出未跟踪的钩子文件——软链原样保留，告警。"""
+        target = self.repo / "scripts" / "hooks" / "post-checkout"
+        target.parent.mkdir(parents=True)
+        self.hook_path().parent.mkdir(parents=True, exist_ok=True)
+        try:
+            os.symlink("../../scripts/hooks/post-checkout", self.hook_path())
+        except OSError as exc:      # Windows 无符号链接特权
+            self.skipTest(f"建不了文件符号链接：{exc}")
+        proc = self.run_setup()
+        self.assertTrue(self.hook_path().is_symlink(), "软链本身不应被替换")
+        self.assertFalse(target.exists(), "不得穿过悬空软链在工作区建出钩子文件")
+        # 只断言「有告警」区分不开：环境缺 python 等也会告警，所以要求告警行点名钩子
+        warnings = [line for line in proc.stdout.splitlines() if line.startswith(self.WARN_MARK)]
+        self.assertTrue(any("post-checkout" in line for line in warnings), proc.stdout)
+
     def run_piped(self, *args: str) -> subprocess.CompletedProcess:
         """模拟 `curl ... | bash -s -- 参数`：脚本从 stdin 进入，$0 是 bash，磁盘上没有脚本文件。"""
         env = {**os.environ, "HOME": self.temp_dir.name, "LC_ALL": "en_US.UTF-8"}
