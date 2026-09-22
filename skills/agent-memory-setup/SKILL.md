@@ -92,7 +92,7 @@ powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\.agents\skills\agent-
 - **自定义**：仓根放 `.worktree-share`，一行一项，`#` 注释，`!` 前缀剔除内置项（如 `!.env`），可带通配。目录本身含入库文件（如 `repos/.gitkeep` 入库、其下克隆被忽略）时展开为其下被忽略的条目逐条共享。
 - **尾斜杠规则**：`.gitignore` 里 `.memory/` 这类带尾斜杠的规则只匹配真实目录、不匹配软链。脚本共享后复核，未被忽略就往仓库共用的 `.git/info/exclude` 补一行不带尾斜杠的路径，不碰团队 `.gitignore`。
 - **手动**：接线前建的 worktree，或钩子没装的仓库：`bash ~/.agents/skills/agent-memory-setup/worktree-share.sh link <worktree路径>`；Windows `pwsh -File "$env:USERPROFILE\.agents\skills\agent-memory-setup\worktree-share.ps1" link <worktree路径>`。钩子里写的也是这个全局发现根路径（两种安装方式都有，不随开发 clone 或临时 worktree 移动）。对根工作区执行只提示不动作。
-- **删 worktree 前先回收**：共享只在 link 那一刻做一次，展开也只看根工作区当时已有的被忽略条目。之后在 worktree 里新建、又不在软链目录之下的被忽略目录或文件（如 `repos/.gitkeep` 入库时新 clone 进 `repos/` 的仓库、新周期的采集正文）是 worktree 自己的真实文件，对复制文件的改动（如私有页）也只留在 worktree，`git status` 都看不到。`git worktree remove` 只拦已跟踪文件的修改和未被忽略的未跟踪文件，**不检查被忽略文件**：不加 `--force` 也执行成功并把它们一并删除（软链只删链接，根工作区不受影响）。经软链写进根工作区的状态与只留在 worktree 的数据会就此脱节，例如采集水位线已推进、对应正文却随 worktree 删掉，增量采集补不回来。删之前先列出，逐条确认后回收（`WT`、`ROOT` 为绝对路径；macOS / Linux）：
+- **删 worktree 前先回收**：共享只在 link 那一刻做一次，展开也只看根工作区当时已有的被忽略条目。之后在 worktree 里新建、又不在软链目录之下的被忽略目录或文件（如只入库了 `repos/.gitkeep` 的目录里新 clone 进去的仓库）是 worktree 自己的真实文件，对复制文件的改动（如 `.env`）也只留在 worktree，`git status` 都看不到。`git worktree remove` 只拦已跟踪文件的修改和未被忽略的未跟踪文件，**不检查被忽略文件**：不加 `--force` 也执行成功并把它们一并删除（软链只删链接，根工作区不受影响）。经软链写进根工作区的状态与只留在 worktree 的数据会就此脱节，例如软链目录里的进度游标已推进，游标指向的产物却随 worktree 删掉，按游标做的增量处理补不回来。删之前先列出，逐条确认后回收（`WT`、`ROOT` 为绝对路径；macOS / Linux）：
 
   ```bash
   # 列出 worktree 里被忽略的真实条目，软链除外。-z 取原样路径：不加时含空格、引号、反斜杠的路径会被加引号转义
