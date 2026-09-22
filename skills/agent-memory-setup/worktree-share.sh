@@ -22,6 +22,10 @@
 # 清单 = 内置清单 + 仓根 .worktree-share：一行一项、# 注释、! 前缀剔除内置项；根工作区与目标 worktree 两份取并集，
 # 分支里新增的项合入前就生效。类型不用声明，根工作区里是目录就链、是文件就复制。
 #
+# 不做持续同步：共享只在 link 时按根工作区当时的状态做一次。之后在 worktree 里新建的被忽略条目（软链目录之下的除外）、
+# 对复制文件的改动都只留在 worktree；git worktree remove 不检查被忽略文件，不加 --force 也会连同删除。
+# 删 worktree 前的列出与回收做法见 SKILL.md「worktree 里效果不变」。
+#
 # 由 setup.sh 安装的 post-checkout 钩子在 git worktree add 后自动调用本脚本 link；接线前建的 worktree 手动执行一次。
 # link 末尾会调一次 memory-sync.sh，把 Codex 记忆里属于本仓的部分同步进主工作区的 .memory（无 .memory 时静默）。
 # 兼容 macOS 自带 bash 3.2：不用 mapfile、关联数组、${var,,}。
