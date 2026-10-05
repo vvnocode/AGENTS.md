@@ -108,7 +108,7 @@ class RuleEvalsTest(unittest.TestCase):
     def run_py(self, *args: str, timeout: int = 120) -> subprocess.CompletedProcess:
         """跑真实的 run.py；假代理通过 --agent-cmd 接入。"""
         cmd = [sys.executable, str(RUN_PY), "--scenarios", str(self.scenarios), "--results", str(self.results),
-               "--agent-cmd", f"{{python}} {self.fake} {{prompt_file}} {{workspace}}", *args]
+               "--agent-cmd", f"{{python}} {self.fake.as_posix()} {{prompt_file}} {{workspace}}", *args]
         return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
 
     def run_eval(self, *args: str) -> dict:
@@ -203,6 +203,15 @@ class RuleEvalsTest(unittest.TestCase):
         self.make_scenario("untracked", [{"write": ["app/new.py", "a = 1\nb = 2\nc = 3\n"]}],
                            [{"id": "small", "desc": "x", "kind": "max_added_lines", "paths": ["app/*"], "limit": 2}])
         self.assertFalse(self.checks_of(self.run_eval("--arm", "none"), "untracked", "none")["small"])
+
+    def test_nested_worktree_does_not_break_change_accounting(self) -> None:
+        """代理在工作区里另建 git worktree 时，git 把它报成一个未跟踪目录；统计改动不能因此出错。"""
+        self.make_scenario("worktree", [{"git": ["worktree", "add", "-q", ".worktrees/t", "-b", "t"]}, {"say": "好"}],
+                           [{"id": "only-app", "desc": "x", "kind": "changed_only", "paths": ["app/*"]},
+                            {"id": "small", "desc": "x", "kind": "max_added_lines", "paths": ["*"], "limit": 0}])
+        s = self.run_eval("--arm", "none")
+        self.assertEqual(s["runs"][0]["status"], "ok", s["runs"][0]["output"])
+        self.assertEqual(self.checks_of(s, "worktree", "none"), {"only-app": False, "small": True})
 
     def test_committed_changes_are_still_seen(self) -> None:
         """代理自己提交之后，改动范围仍按基线提交计算。"""

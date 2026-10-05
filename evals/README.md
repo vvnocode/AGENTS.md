@@ -123,7 +123,7 @@ scenarios/<名称>/
 python3 evals/run.py --agent-cmd 'mytool exec --model {model} --prompt-file {prompt_file} --cd {workspace}'
 ```
 
-命令在工作区内执行，标准输出当作最终回复；占位符有 `{prompt_file}`、`{workspace}`、`{model}`、`{python}`。运行器只负责往工作区放规则文件，工具自己的全局规则入口（如 `~/.codex/AGENTS.md`）要由调用者设法排除，否则 `none` 组并不是真的不带规则；隔离与免确认也由调用者通过该工具自己的参数保证。
+命令在工作区内执行，标准输出当作最终回复；占位符有 `{prompt_file}`、`{workspace}`、`{model}`、`{python}`。模板按 POSIX shell 规则切分后再替换占位符，Windows 上模板里的路径用正斜杠。运行器只负责往工作区放规则文件，工具自己的全局规则入口（如 `~/.codex/AGENTS.md`）要由调用者设法排除，否则 `none` 组并不是真的不带规则；隔离与免确认也由调用者通过该工具自己的参数保证。
 
 ## 局限
 

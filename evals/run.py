@@ -201,7 +201,12 @@ def collect_changes(workspace: Path, baseline_commit: str) -> dict:
         changes[path] = 0 if added == "-" else int(added)   # 二进制文件的行数记为 0
     untracked = git(workspace, "ls-files", "--others", "--exclude-standard", "-z").stdout
     for path in filter(None, untracked.split("\0")):
-        data = (workspace / path).read_bytes()
+        target = workspace / path
+        if not target.is_file():
+            # 代理另建的 git worktree 等嵌套仓库会被报成一个目录：算作改动，行数记 0
+            changes[path] = 0
+            continue
+        data = target.read_bytes()
         changes[path] = data.count(b"\n") + (1 if data and not data.endswith(b"\n") else 0)
     return changes
 
