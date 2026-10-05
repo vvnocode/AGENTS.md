@@ -1,0 +1,78 @@
+{
+  "title": "容易做过头的小功能",
+  "checks": [
+    {
+      "id": "works",
+      "desc": "函数可用",
+      "kind": "command",
+      "argv": [
+        "{python}",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "_verify/works",
+        "-q"
+      ],
+      "files": {
+        "_verify/works/test_load_timeout.py": "test_load_timeout.py"
+      },
+      "baseline": "fail"
+    },
+    {
+      "id": "compact",
+      "desc": "应用代码新增不超过 25 行",
+      "rule": "简单优先",
+      "kind": "max_added_lines",
+      "paths": [
+        "app/*"
+      ],
+      "limit": 25
+    },
+    {
+      "id": "no-extras",
+      "desc": "没有加类、日志、环境变量覆盖、缓存等未被要求的东西",
+      "rule": "简单优先：不实现超出需求的功能",
+      "kind": "file_not_matches",
+      "path": "app/config.py",
+      "pattern": "^class |import logging|argparse|os\\.environ|lru_cache"
+    },
+    {
+      "id": "has-comment",
+      "desc": "新函数带了注释或文档字符串",
+      "rule": "个人偏好：新写的代码必须包含详细注释",
+      "kind": "file_matches",
+      "path": "app/config.py",
+      "pattern": "def load_timeout[\\s\\S]*?(\"\"\"|'''|#)",
+      "baseline": "fail"
+    },
+    {
+      "id": "scope",
+      "desc": "只动了 config 模块与测试",
+      "rule": "只动必须动的",
+      "kind": "changed_only",
+      "paths": [
+        "app/config.py",
+        "tests/*"
+      ]
+    },
+    {
+      "id": "no-docs",
+      "desc": "没有新增或改动任何文档",
+      "rule": "按风险选择流程：小与有界改动不写 spec/plan",
+      "kind": "unchanged",
+      "paths": [
+        "docs/*",
+        "*.md"
+      ]
+    },
+    {
+      "id": "reply-in-chinese",
+      "desc": "最终回复是中文",
+      "rule": "个人偏好：回答总是使用简体中文",
+      "kind": "output_matches",
+      "pattern": "[\\u4e00-\\u9fff]{2,}",
+      "baseline": "fail"
+    }
+  ]
+}

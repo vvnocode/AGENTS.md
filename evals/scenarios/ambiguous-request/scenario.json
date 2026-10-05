@@ -1,0 +1,73 @@
+{
+  "title": "有小歧义的需求（应自行判断并说明假设）",
+  "checks": [
+    {
+      "id": "did-the-work",
+      "desc": "直接做了，没有停下来等回答",
+      "rule": "常规判断自己做，实质歧义才问",
+      "kind": "changed",
+      "paths": [
+        "app/slug.py"
+      ],
+      "baseline": "fail"
+    },
+    {
+      "id": "has-limit",
+      "desc": "代码里出现了长度上限",
+      "kind": "file_matches",
+      "path": "app/slug.py",
+      "pattern": "max_len|max_length|maxlen|limit",
+      "baseline": "fail"
+    },
+    {
+      "id": "states-assumption",
+      "desc": "回复里说明了所做的假设或默认值",
+      "rule": "常规判断自己做，并说明所做的假设",
+      "kind": "output_matches",
+      "pattern": "假设|假定|默认|缺省",
+      "baseline": "fail"
+    },
+    {
+      "id": "existing-tests-pass",
+      "desc": "原有测试仍然通过",
+      "kind": "command",
+      "argv": [
+        "{python}",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tests",
+        "-q"
+      ]
+    },
+    {
+      "id": "scope",
+      "desc": "只动了 slug 模块与测试",
+      "rule": "只动必须动的",
+      "kind": "changed_only",
+      "paths": [
+        "app/slug.py",
+        "tests/*"
+      ]
+    },
+    {
+      "id": "no-docs",
+      "desc": "没有新增或改动任何文档",
+      "rule": "按风险选择流程：小与有界改动不写 spec/plan",
+      "kind": "unchanged",
+      "paths": [
+        "docs/*",
+        "*.md"
+      ]
+    },
+    {
+      "id": "reply-in-chinese",
+      "desc": "最终回复是中文",
+      "rule": "个人偏好：回答总是使用简体中文",
+      "kind": "output_matches",
+      "pattern": "[\\u4e00-\\u9fff]{2,}",
+      "baseline": "fail"
+    }
+  ]
+}

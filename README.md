@@ -1,6 +1,6 @@
 # AGENTS.md：跨工具 AI 编程协作规范
 
-一份可移植、可审查、可版本控制的 AI 编程协作规范。以单一 Markdown 文件为规则源，通过符号链接或项目级入口复用于 Claude Code、Codex、Gemini CLI、OpenCode、Cursor、DeepSeek Harness 等工具。
+一份可移植、可审查、可版本控制的 AI 编程协作规范。以单一 Markdown 文件为规则源，通过符号链接或项目级入口复用于 Claude Code、Codex、Antigravity CLI（原 Gemini CLI）、OpenCode、Cursor、DeepSeek Harness 等工具。
 
 [快速开始](#快速开始) · [支持矩阵](#支持矩阵) · [接线一个仓库](#接线一个仓库) · [两件套](#两件套) · [项目级接入](#项目级接入) · [更新](#更新规则) · [参与贡献](#参与贡献) · [许可](#许可)
 
@@ -38,20 +38,22 @@
 
 | 工具 | 用户级入口 | 项目级入口 | 全局 Skill 发现根 | 官方说明 |
 |---|---|---|---|---|
-| Claude Code | `~/.claude/CLAUDE.md` | `./CLAUDE.md` | `~/.claude/skills/` | [Memory](https://code.claude.com/docs/en/memory) |
+| Claude Code | `~/.claude/CLAUDE.md` | `./CLAUDE.md`；v2.1.277 起没有 `CLAUDE.md` 时直接读 `./AGENTS.md` | `~/.claude/skills/` | [Memory](https://code.claude.com/docs/en/memory) |
 | Codex | `~/.codex/AGENTS.md` | `./AGENTS.md` | `~/.codex/skills/` | [Codex manual](https://developers.openai.com/codex/codex-manual.md) |
-| Gemini CLI | `~/.gemini/GEMINI.md` | `./GEMINI.md` | 待核验 | [Provide context with GEMINI.md](https://geminicli.com/docs/cli/gemini-md/) |
+| Antigravity CLI（接替 Gemini CLI） | `~/.gemini/GEMINI.md` | `./GEMINI.md` 或 `./AGENTS.md` | `~/.gemini/antigravity-cli/skills/`（安装脚本未挂载） | [Gemini CLI migration](https://antigravity.google/docs/cli/gcli-migration) |
 | OpenCode | `~/.config/opencode/AGENTS.md` | `./AGENTS.md` | `~/.config/opencode/skills/`，也扫 `~/.claude/skills/` 与 `~/.agents/skills/` | [Rules](https://opencode.ai/docs/en/rules/) |
 | DeepSeek Harness | `$DSH_HOME/AGENTS.md`，默认 `~/.dsh/AGENTS.md` | `./AGENTS.md` 或 `./CLAUDE.md` | `~/.agents/skills/` | [Agent instructions](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/context/agent-instructions/README.md) |
 | Cursor | 设置中的 User Rules | `./AGENTS.md` 或 `.cursor/rules/` | 待核验 | [Rules](https://cursor.com/docs/rules) |
 
+Gemini CLI 自 2026-06-18 起对 Gemini Code Assist 个人版、Google AI Pro 与 Ultra 账号停止服务（[Google Cloud release notes](https://docs.cloud.google.com/gemini/docs/release-notes)）；接替它的 Antigravity CLI 沿用同一组规则入口，原有的 `~/.gemini/GEMINI.md` 软链无需改动。
+
 “支持”表示目标工具能够读取对应入口中的 Markdown 规则，不表示不同工具会以完全相同的优先级、上下文预算或合并算法处理它。项目规则、目录级规则和组织托管规则可能覆盖本文件。
 
-「全局 Skill 发现根」列供 Skill 挂载时参考（本仓 `install.sh` 就按它把 `skills/agent-memory-setup` 挂到三处）：`~/.agents/skills/` 是跨工具约定俗成的 canonical 根，Cline、Dexto、Kimi、Warp、Zed 等只读它；Claude Code 与 Codex 不扫它、只认自己的目录。把一个 skill 软链到 `~/.agents/skills/`、`~/.claude/skills/`、`~/.codex/skills/` 三处即可覆盖上表已核验的工具。标「待核验」的格子尚未按实物核对，不要凭印象填写。本表是这三类路径的唯一正本，其他仓库只链接、不另维护。
+「全局 Skill 发现根」列供 Skill 挂载时参考（本仓 `install.sh` 就按它把 `skills/agent-memory-setup` 挂到三处）：`~/.agents/skills/` 是跨工具约定俗成的 canonical 根，Cline、Dexto、Kimi、Warp、Zed 等只读它；Claude Code 与 Codex 不扫它、只认自己的目录。把一个 skill 软链到 `~/.agents/skills/`、`~/.claude/skills/`、`~/.codex/skills/` 三处即可覆盖上表除 Antigravity CLI 以外已核验的工具。标「待核验」的格子尚未按实物核对，不要凭印象填写。本表是这三类路径的唯一正本，其他仓库只链接、不另维护。
 
 ## 快速开始
 
-一条命令把仓库 clone 到 `~/.vvnocode/rules`，把 `AGENTS.md` 软链到各工具的用户级规则入口（Claude Code、Codex、Gemini CLI、OpenCode、DeepSeek Harness），并把 `skills/agent-memory-setup` 软链到三处全局 Skill 发现根。幂等：重跑即更新，已存在的目标只告警不覆盖。
+一条命令把仓库 clone 到 `~/.vvnocode/rules`，把 `AGENTS.md` 软链到各工具的用户级规则入口（Claude Code、Codex、Gemini CLI / Antigravity CLI、OpenCode、DeepSeek Harness），并把 `skills/agent-memory-setup` 软链到三处全局 Skill 发现根。幂等：重跑即更新，已存在的目标只告警不覆盖。
 
 **macOS / Linux**：
 
@@ -119,7 +121,7 @@ PROJECT_ROOT="/path/to/project"
 # 只创建本机实际使用的入口，不覆盖已有项目规则，也不要提交这些绝对路径链接。
 ln -s "$RULES_FILE" "$PROJECT_ROOT/CLAUDE.md"  # Claude Code
 ln -s "$RULES_FILE" "$PROJECT_ROOT/AGENTS.md"  # Codex、OpenCode、Cursor、DeepSeek Harness
-ln -s "$RULES_FILE" "$PROJECT_ROOT/GEMINI.md"  # Gemini CLI
+ln -s "$RULES_FILE" "$PROJECT_ROOT/GEMINI.md"  # Gemini CLI、Antigravity CLI
 ```
 
 团队共享时，应把适用的通用规则复制或整理到项目自己的规则文件中，再提交该实际文件。这样每个协作者检出仓库后都能获得相同配置，也可以在项目内独立审查后续变更。
@@ -166,13 +168,14 @@ git -C "$RULES_HOME" merge --ff-only origin/main
 .
 ├── .gitignore   # 本地配置、凭据和临时文件的忽略规则
 ├── AGENTS.md    # 跨工具复用的唯一规则源
+├── evals/       # 规则回归集：带规则与不带规则对照运行同一批场景，判断某条规则是否还需要
 ├── install.sh   # 一键安装（macOS / Linux）：clone 到 ~/.vvnocode/rules，软链各规则入口与 skill
 ├── install.ps1  # 一键安装（Windows），纯 ASCII
 ├── LICENSE      # CC0 1.0 Universal 完整法律文本
 ├── README.md    # 安装、兼容性、维护和贡献说明
 ├── skills/
 │   └── agent-memory-setup/   # 单仓接线 skill：setup.sh/.ps1、worktree-share.sh/.ps1、post-checkout 钩子模板、Codex 探针
-└── tests/       # 安装、接线与 worktree 共享脚本的离线契约测试：python3 -m unittest discover -s tests
+└── tests/       # 安装、接线、worktree 共享脚本与回归集运行器的离线契约测试：python3 -m unittest discover -s tests
 ```
 
 `.ps1` 测试需要 `pwsh`（或 Windows PowerShell），没有则自动跳过；三个 Windows 专属用例（钩子端到端、已有联接只告警、删 worktree 不伤根工作区）只在 Windows 上运行。Windows 上 `.sh` 套件整体跳过（`.sh` 不是 Windows 的支持路径）。
@@ -185,6 +188,8 @@ git -C "$RULES_HOME" merge --ff-only origin/main
 - **默认值与项目约束分离**：全局规则提供基线，项目规则负责具体命令和架构事实。
 - **可验证性优先**：所有“完成”“修复”“通过”都应有本轮执行证据。
 - **最小必要修改**：每一处变更都应能够追溯到明确需求。
+- **条文带理由，底线之外留裁量**：能力强的模型会从理由泛化，绝对化的命令只会被过度执行。工程纪律的条文与现场冲突时，由模型说明理由后按判断走；三条底线和写明要用户确认的地方不在裁量之内。
+- **行为类条款有保质期**：矫正模型行为的条款是在替某一代模型的短板说话，换主力模型时复核，不带规则也做得到的就删除；偏好、流程政策、授权边界与环境事实不在此列。2026-10 以 Claude Opus 5.5、Fable 5.1 与 GPT-6 系列为主力模型，依据 Anthropic 的 [Prompting best practices](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices)、OpenAI 的 [Rethinking skills and prompts for GPT-6 Astra](https://developers.openai.com/blog/rethinking-skills-and-prompts-for-gpt-6-astra) 与 Claude Code 的 [CLAUDE.md 编写建议](https://code.claude.com/docs/en/memory#write-effective-instructions)做过一轮，正文由 239 行减到 123 行；这一轮的依据是厂商文档与上游变更，对照运行尚未做。此后的复核用 [`evals/`](./evals/README.md) 的场景集：带规则与不带规则各跑几次，按结果增删。
 - **安全公开**：公开版本不包含个人身份信息、机器路径或秘密材料。
 
 ## 参与贡献
@@ -193,6 +198,7 @@ git -C "$RULES_HOME" merge --ff-only origin/main
 
 - 变更适用于多个项目或工具，而不是单个仓库的偶然需求。
 - 新规则解决了明确问题，并且没有与现有条目重复或冲突。
+- 矫正模型行为的新规则附一个能复现该问题的 [`evals/`](./evals/README.md) 场景；模型第二次犯同样的错再加，而不是预防性地加。
 - 工具路径、文件名和加载行为附有官方文档依据。
 - 文档示例不会覆盖用户已有配置，也不包含真实凭据或个人路径。
 - Pull Request 说明包含修改原因、影响范围和验证方式。
@@ -201,8 +207,8 @@ git -C "$RULES_HOME" merge --ff-only origin/main
 
 ## 来源与致谢
 
-- 通用行为准则：逐句中译自 [multica-ai/andrej-karpathy-skills](https://github.com/multica-ai/andrej-karpathy-skills) 的 `CLAUDE.md`。
-- 工程纪律：提炼自 [obra/superpowers](https://github.com/obra/superpowers) v6.3.0。本文件始终加载，只保留始终有效的纪律，不照搬插件按需加载时的完整仪式。
+- 通用行为准则：节选自 [multica-ai/andrej-karpathy-skills](https://github.com/multica-ai/andrej-karpathy-skills) 的 `CLAUDE.md`，保留「简单优先」「外科手术式修改」两条并压缩；「编码前先思考」无门槛的提问要求与工程纪律里有门槛的版本相抵（其中「说明假设」「指出更简单的方案」两点并入工程纪律），「目标驱动执行」要求的定标准、循环验证在当前主力模型上已成默认，两条于 2026-10 移除。
+- 工程纪律：提炼自 [obra/superpowers](https://github.com/obra/superpowers) v6.3.0，「plan 只记决策、不誊写代码」一条跟进其 v6.4.2。本文件始终加载，只保留始终有效的纪律，不照搬插件按需加载时的完整仪式。
 
 这些来源提供方法论基础，本仓库负责跨工具适配、中文维护和公开版本的隐私处理。
 

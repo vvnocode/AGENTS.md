@@ -44,3 +44,5 @@ dist/
 build/
 # Claude 本机配置，含绝对路径，不入库（agent-memory-setup）
 .claude/settings.local.json
+# 规则回归集的运行结果（含模型输出与本机路径），只留本机
+evals/results/

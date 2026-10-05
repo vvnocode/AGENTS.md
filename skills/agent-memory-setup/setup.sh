@@ -46,7 +46,8 @@ warn() { echo "⚠ $*"; WARN=$((WARN + 1)); }
 echo "═══ agent-memory-setup：$ROOT ═══"
 
 # ── 1) 指令合一：AGENTS.md 为正本，CLAUDE.md 只含一行 @AGENTS.md 引用 ──
-# Claude Code 只读 CLAUDE.md、不读 AGENTS.md；Codex / dsh / opencode 读 AGENTS.md。两份都要有、且必须是同一份。
+# Claude Code 有 CLAUDE.md 时只读它（v2.1.277 起没有 CLAUDE.md / CLAUDE.local.md 才直接读 AGENTS.md）；Codex / dsh / opencode 读 AGENTS.md。
+# 两份都要有、且必须是同一份：引用行对新旧版本都生效，也不受日后添加 CLAUDE.local.md 影响。
 # 用引用行而不是软链：不需要任何权限，检出到 Windows 也有效；软链入库后在 Windows 默认 core.symlinks=false 下
 # 会变成只含 "AGENTS.md" 四个字的文本文件。旧做法留下的软链在这里自动改为引用行。
 IMPORT_LINE='@AGENTS.md'
