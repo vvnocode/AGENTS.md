@@ -343,7 +343,10 @@ class RuleEvalsTest(unittest.TestCase):
             prompt = sys.argv[sys.argv.index("-p") + 1]
             pathlib.Path("app/a.py").write_text("x = 2\\n", encoding="utf-8")      # 在工作目录里留下改动
             rules = "有规则" if os.path.exists("AGENTS.md") else "无规则"
-            print(json.dumps({{"result": f"收到：{{prompt}}｜{{rules}}", "total_cost_usd": 0.25, "num_turns": 4}}, ensure_ascii=False))
+            usage = {{"input_tokens": 0, "cache_creation_input_tokens": 0,
+                      "cache_read_input_tokens": 6000 if rules == "有规则" else 4000}}  # 4 轮：每轮 1500 对 1000
+            print(json.dumps({{"result": f"收到：{{prompt}}｜{{rules}}", "total_cost_usd": 0.25, "num_turns": 4,
+                              "usage": usage}}, ensure_ascii=False))
             '''), encoding="utf-8")
         stub.chmod(0o755)
         d = self.make_scenario("builtin", [], [{"id": "did-work", "desc": "x", "kind": "changed", "paths": ["app/*"], "baseline": "fail"}])
@@ -360,13 +363,22 @@ class RuleEvalsTest(unittest.TestCase):
         self.assertEqual(by_arm["rules"]["output"], "收到：改一下 a.py\n｜有规则")
         for run in s["runs"]:
             self.assertEqual((run["status"], run["cost_usd"], run["turns"], run["checks"]), ("ok", 0.25, 4, {"did-work": True}))
+        self.assertEqual((by_arm["none"]["input_tokens"], by_arm["rules"]["input_tokens"]), (4000, 6000))
+        # 报告的开销表给出每组每轮的平均输入：两组之差就是规则文件进了上下文的证据
+        report = sorted(self.results.glob("*/report.md"))[-1].read_text(encoding="utf-8")
+        self.assertIn("平均每轮输入（token）", report)
+        self.assertRegex(report, r"\| none \|[^\n]*\| 1000 \|")
+        self.assertRegex(report, r"\| rules \|[^\n]*\| 1500 \|")
 
     def test_claude_output_parsing(self) -> None:
         run = load_run_module()
-        ok = run.parse_claude_output(json.dumps({"result": "完成", "total_cost_usd": 0.12, "num_turns": 7}))
-        self.assertEqual((ok["text"], ok["cost_usd"], ok["turns"]), ("完成", 0.12, 7))
+        usage = {"input_tokens": 10, "cache_creation_input_tokens": 200, "cache_read_input_tokens": 3000}
+        ok = run.parse_claude_output(json.dumps({"result": "完成", "total_cost_usd": 0.12, "num_turns": 7, "usage": usage}))
+        self.assertEqual((ok["text"], ok["cost_usd"], ok["turns"], ok["input_tokens"]), ("完成", 0.12, 7, 3210))
+        no_usage = run.parse_claude_output(json.dumps({"result": "完成"}))
+        self.assertIsNone(no_usage["input_tokens"])
         raw = run.parse_claude_output("不是 JSON 的报错文本")
-        self.assertEqual((raw["text"], raw["cost_usd"], raw["turns"]), ("不是 JSON 的报错文本", None, None))
+        self.assertEqual((raw["text"], raw["cost_usd"], raw["turns"], raw["input_tokens"]), ("不是 JSON 的报错文本", None, None, None))
 
 
 if __name__ == "__main__":

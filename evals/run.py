@@ -293,14 +293,23 @@ def claude_argv(prompt: str, model: str, home: Path, budget_usd: float | None = 
 
 
 def parse_claude_output(stdout: str) -> dict:
-    """解析 claude -p --output-format json 的结果；不是 JSON 时把原文当作最终回复。"""
+    """解析 claude -p --output-format json 的结果；不是 JSON 时把原文当作最终回复。
+
+    input_tokens 是本次运行各轮输入之和（未缓存、写缓存、读缓存三项相加）。除以轮数就是每轮的上下文大小，
+    带规则与不带规则两组之差即规则文件进了上下文的证据，比看回复内容可靠。
+    """
     try:
         data = json.loads(stdout)
         if isinstance(data, dict):
-            return {"text": str(data.get("result") or ""), "cost_usd": data.get("total_cost_usd"), "turns": data.get("num_turns")}
+            usage = data.get("usage") if isinstance(data.get("usage"), dict) else None
+            tokens = None
+            if usage is not None:
+                tokens = sum(int(usage.get(k) or 0) for k in ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"))
+            return {"text": str(data.get("result") or ""), "cost_usd": data.get("total_cost_usd"),
+                    "turns": data.get("num_turns"), "input_tokens": tokens}
     except ValueError:
         pass
-    return {"text": stdout.strip(), "cost_usd": None, "turns": None}
+    return {"text": stdout.strip(), "cost_usd": None, "turns": None, "input_tokens": None}
 
 
 def run_process(argv: list, cwd: Path, timeout: int) -> tuple:
@@ -338,7 +347,7 @@ def run_agent(args: argparse.Namespace, prompt: str, prompt_file: Path, workspac
         subst = {"{python}": sys.executable, "{prompt_file}": str(prompt_file), "{workspace}": str(workspace), "{model}": args.model or ""}
         argv = [subst.get(token, token) for token in shlex.split(args.agent_cmd)]
         status, out, err, seconds = run_process(argv, workspace, args.timeout)
-        parsed = {"text": out.strip(), "cost_usd": None, "turns": None}
+        parsed = {"text": out.strip(), "cost_usd": None, "turns": None, "input_tokens": None}
     else:
         argv = claude_argv(prompt, args.model or "opus", Path.home(), args.budget_usd)
         status, out, err, seconds = run_process(argv, workspace, args.timeout)
@@ -374,9 +383,10 @@ def run_one(args: argparse.Namespace, scenario: dict, arm: str, rules_text: str 
         (out_dir / "changes.json").write_text(json.dumps(changes, ensure_ascii=False, indent=2), encoding="utf-8")
         (out_dir / "checks.json").write_text(json.dumps(checks, ensure_ascii=False, indent=2), encoding="utf-8")
         record.update(status=result["status"], seconds=result["seconds"], cost_usd=result["cost_usd"],
-                      turns=result["turns"], output=result["text"], checks=checks)
+                      turns=result["turns"], input_tokens=result["input_tokens"], output=result["text"], checks=checks)
     except Exception as exc:  # 单次运行自身出错（如 setup 失败）只记一条，不拖垮整轮
-        record.update(status="runner_error", seconds=0, cost_usd=None, turns=None, output=f"运行器出错：{exc}", checks={})
+        record.update(status="runner_error", seconds=0, cost_usd=None, turns=None, input_tokens=None,
+                      output=f"运行器出错：{exc}", checks={})
     finally:
         if args.keep:
             log(f"  保留工作区 {workspace}")
@@ -414,13 +424,17 @@ def render_report(meta: dict, scenarios: list, arms: list, runs: list, table: di
                          + " | ".join(f"{cells[a][0]}/{cells[a][1]}" for a in arms) + " |")
         lines.append("")
     # 开销：规则文件本身也有成本，按组看平均耗时、轮数与费用
-    lines += ["## 开销", "", "| 组 | 运行数 | 非正常结束 | 平均耗时（秒） | 平均轮数 | 平均费用（USD） |", "|---|---|---|---|---|---|"]
+    # 平均每轮输入：各组之间的差就是规则文件的体量，差为 0 说明规则没有进上下文
+    lines += ["## 开销", "", "| 组 | 运行数 | 非正常结束 | 平均耗时（秒） | 平均轮数 | 平均费用（USD） | 平均每轮输入（token） |",
+              "|---|---|---|---|---|---|---|"]
     for arm in arms:
         mine = [r for r in runs if r["arm"] == arm]
         def mean(key: str) -> str:
             values = [r[key] for r in mine if r.get(key) is not None]
             return f"{sum(values) / len(values):.2f}" if values else "—"
-        lines.append(f"| {arm} | {len(mine)} | {sum(1 for r in mine if r['status'] != 'ok')} | {mean('seconds')} | {mean('turns')} | {mean('cost_usd')} |")
+        per_turn = [r["input_tokens"] / r["turns"] for r in mine if r.get("input_tokens") and r.get("turns")]
+        per_turn_text = f"{sum(per_turn) / len(per_turn):.0f}" if per_turn else "—"
+        lines.append(f"| {arm} | {len(mine)} | {sum(1 for r in mine if r['status'] != 'ok')} | {mean('seconds')} | {mean('turns')} | {mean('cost_usd')} | {per_turn_text} |")
     lines.append("")
     # 两份清单只看标了对应规则的检查：一份是删除候选，一份是带了规则仍没做到的
     if "none" in arms:

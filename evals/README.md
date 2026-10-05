@@ -46,9 +46,13 @@ python3 evals/run.py --arm none --arm old=git:main --arm new=AGENTS.md --repeat 
 python3 evals/run.py --only small-change --model haiku
 ```
 
-`small-change` 的提示词是英文。预期两次运行都以 `ok` 结束，且 `reply-in-chinese` 一行是 `none` 组 0/1、`rules` 组 1/1。如果 `none` 组也是中文回复，说明用户级规则文件没有被排除，对照不成立，先查 `run.py` 里的 `claudeMdExcludes`。
+预期两次运行都以 `ok` 结束，代理改对了文件，隐藏验收通过。
 
-本适配器的命令行参数与设置项按 Claude Code 2.1.285 的 `--help` 和官方文档写成，结果解析有替身测试覆盖；写入本文件时本机命令行版未登录，上面这条冒烟尚未实跑过。
+规则有没有进上下文，看报告开销表的「平均每轮输入（token）」：带规则一组应比 `none` 组多出规则文件的体量（现行 `AGENTS.md` 约 5.2k token）。两组相同，说明规则没有加载；`none` 组也多出这么多，说明用户级规则文件没有被排除，对照不成立，先查 `run.py` 里的 `claudeMdExcludes`。
+
+不要拿 `reply-in-chinese` 判断规则是否加载：2026-10-06 的冒烟里 haiku 在英文提示词下两组都用英文回复，而带规则一组每轮确实多了约 5.3k token，是模型没有遵守语言偏好。这一条留作检查项，衡量的正是模型遵不遵守。
+
+2026-10-06 在 Claude Code 2.1.285 上实跑过这条冒烟；另在空目录里比较过带与不带 `claudeMdExcludes` 各问一句的输入，相差 5,231 token，排除生效。
 
 ## 怎么读结果
 
