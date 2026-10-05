@@ -102,6 +102,7 @@ scenarios/<名称>/
 | `unchanged` | `paths` | 通配内没有改动 |
 | `changed` | `paths` | 通配内至少有一处改动 |
 | `max_added_lines` | `paths`、`limit` | 通配内新增行数之和不超过 `limit` |
+| `max_added_code_lines` | `paths`、`limit` | 同上，但只数代码行：空行、整行注释与文档字符串不算（按 Python 写法粗判） |
 | `output_matches` / `output_not_matches` | `pattern` | 最终回复匹配 / 不匹配正则 |
 | `file_matches` / `file_not_matches` | `path`、`pattern` | 文件存在且匹配 / 不存在或不匹配 |
 | `command` | `argv`，可选 `files` | 命令退出码为 0；`files` 把 `verify/` 下的文件先拷进工作区 |
@@ -116,6 +117,7 @@ scenarios/<名称>/
 
 - 沙箱开启，命令只能写工作目录、没有网络，被拦下的命令不许退到沙箱外重试，沙箱起不来就不运行；
 - 不应答任何权限询问，工作目录内的文件编辑自动放行；
+- 放行沙箱内的 Bash 与只读的 Read：日常使用多在 `bypassPermissions` 下，含 `;`、`&&`、管道或多行脚本的复合命令不会被拦，不放行的话这类命令全被拒绝，代理连测试都跑不了（2026-10-06 首轮对照有 55 次运行受此影响）；编辑仍不放行到工作目录以外；
 - 不加载 MCP 与 skills，不保存会话；
 - 排除用户级 `~/.claude/CLAUDE.md` 及其软链目标，各组之间只差项目里的 `AGENTS.md` 与 `CLAUDE.md`（一行 `@AGENTS.md`）。
 

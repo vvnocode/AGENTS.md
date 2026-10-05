@@ -198,6 +198,35 @@ class RuleEvalsTest(unittest.TestCase):
         self.assertEqual(got, {"only-app": False, "app-and-docs": True, "no-docs": False, "tests-untouched": True,
                                "did-work": True, "added-test": False, "small": False, "roomy": True})
 
+    def test_code_line_count_ignores_comments_docstrings_and_blank_lines(self) -> None:
+        """「简单优先」看代码量，不看注释量：用户要求新代码带详细注释，按总行数算会把注释当成过度设计。"""
+        body = "\n".join([
+            "import json",
+            "",
+            "",
+            "def load(path):",
+            '    """读取配置。',
+            "",
+            "    多行文档字符串也不算代码。",
+            '    """',
+            "    # 注释行不算",
+            "    with open(path) as f:",
+            "        return json.load(f)  # 行尾带注释的这一行算代码",
+            "    '''单行文档字符串'''",
+            "",
+        ])
+        checks = [
+            {"id": "code-4", "desc": "代码不超过 4 行", "kind": "max_added_code_lines", "paths": ["app/*"], "limit": 4},
+            {"id": "code-3", "desc": "代码不超过 3 行", "kind": "max_added_code_lines", "paths": ["app/*"], "limit": 3},
+            {"id": "all-4", "desc": "总行数不超过 4 行", "kind": "max_added_lines", "paths": ["app/*"], "limit": 4},
+        ]
+        # 一份改已跟踪文件（走 diff），一份新建文件（走未跟踪），两条路径都要按同一规则数
+        self.make_scenario("tracked", [{"write": ["app/a.py", body]}], checks, files={"app/a.py": ""})
+        self.make_scenario("untracked", [{"write": ["app/new.py", body]}], checks)
+        s = self.run_eval("--arm", "none")
+        for name in ("tracked", "untracked"):
+            self.assertEqual(self.checks_of(s, name, "none"), {"code-4": True, "code-3": False, "all-4": False}, name)
+
     def test_untracked_file_lines_count_as_added(self) -> None:
         """新建文件未入库也要计入新增行数，否则整文件新增会被漏算。"""
         self.make_scenario("untracked", [{"write": ["app/new.py", "a = 1\nb = 2\nc = 3\n"]}],
@@ -329,6 +358,11 @@ class RuleEvalsTest(unittest.TestCase):
         self.assertFalse(settings["sandbox"]["allowUnsandboxedCommands"], "被沙箱拦下的命令不许退到沙箱外重试")
         self.assertTrue(settings["sandbox"]["failIfUnavailable"], "沙箱起不来就不跑，而不是裸跑")
         self.assertIn("/home/u/.claude/CLAUDE.md", settings["claudeMdExcludes"])
+        # 用户日常用 bypassPermissions，命令不会被拦；对照里只放行沙箱内的 Bash 与只读的 Read，
+        # 编辑仍靠 acceptEdits 限在工作目录内，免得规则里的「收尾写知识库」这类动作写到真实目录
+        self.assertEqual(sorted(settings["permissions"]["allow"]), ["Bash", "Read"])
+        self.assertIn("--permission-mode acceptEdits", joined)
+        self.assertNotIn("bypassPermissions", joined)
 
     @unittest.skipIf(os.name == "nt", "PATH 上的替身脚本依赖 shebang，Windows 不适用")
     def test_builtin_claude_adapter_end_to_end_with_stub_binary(self) -> None:

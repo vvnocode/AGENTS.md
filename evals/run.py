@@ -61,6 +61,7 @@ CHECK_KINDS = {
     "unchanged": ("paths",),             # 给定通配内没有任何改动
     "changed": ("paths",),               # 给定通配内至少有一处改动
     "max_added_lines": ("paths", "limit"),  # 给定通配内新增行数之和不超过 limit
+    "max_added_code_lines": ("paths", "limit"),  # 同上，但只数代码行：空行、注释、文档字符串不算
     "output_matches": ("pattern",),      # 最终回复匹配正则
     "output_not_matches": ("pattern",),  # 最终回复不匹配正则
     "file_matches": ("path", "pattern"),      # 文件存在且内容匹配正则
@@ -211,6 +212,39 @@ def collect_changes(workspace: Path, baseline_commit: str) -> dict:
     return changes
 
 
+def added_lines(workspace: Path, baseline_commit: str, path: str) -> list:
+    """取某个改动路径新增的行（不含行首的 +）：已跟踪的看相对基线的 diff，未跟踪的整份文件都算新增。"""
+    target = workspace / path
+    tracked = git(workspace, "ls-files", "--error-unmatch", "--", path, check=False).returncode == 0
+    if not tracked:
+        return target.read_text(encoding="utf-8", errors="replace").splitlines() if target.is_file() else []
+    diff = git(workspace, "diff", "-U0", "--no-color", baseline_commit, "--", path).stdout
+    return [line[1:] for line in diff.splitlines() if line.startswith("+") and not line.startswith("+++")]
+
+
+def count_code_lines(lines: list) -> int:
+    """按 Python 的写法粗数代码行：跳过空行、整行注释与文档字符串（三引号块，含单行的）。
+
+    用户要求新代码带详细注释，「简单优先」若按总行数判，会把注释量当成过度设计。
+    """
+    count, in_doc, delim = 0, False, ""
+    for raw in lines:
+        s = raw.strip()
+        if in_doc:
+            if delim in s:          # 文档字符串在这一行结束
+                in_doc = False
+            continue
+        if not s or s.startswith("#"):
+            continue
+        if s.startswith(('"""', "'''")):
+            q = s[:3]
+            if s == q or s.count(q) < 2:   # 文档字符串开始、本行没有结束
+                in_doc, delim = True, q
+            continue
+        count += 1
+    return count
+
+
 # ── 检查 ──
 def eval_check(check: dict, scenario: dict, workspace: Path, output: str, changes: dict, baseline: dict) -> bool:
     """执行一条检查，返回是否通过。"""
@@ -223,6 +257,9 @@ def eval_check(check: dict, scenario: dict, workspace: Path, output: str, change
         return any(match_any(p, check["paths"]) for p in changes)
     if kind == "max_added_lines":
         return sum(n for p, n in changes.items() if match_any(p, check["paths"])) <= check["limit"]
+    if kind == "max_added_code_lines":
+        total = sum(count_code_lines(added_lines(workspace, baseline["commit"], p)) for p in changes if match_any(p, check["paths"]))
+        return total <= check["limit"]
     if kind in ("output_matches", "output_not_matches"):
         found = re.search(check["pattern"], output, re.M) is not None
         return found if kind == "output_matches" else not found
@@ -275,6 +312,9 @@ def claude_argv(prompt: str, model: str, home: Path, budget_usd: float | None = 
 
     - 沙箱开启且不许退到沙箱外重试：命令只能写工作目录、没有网络；沙箱起不来就不跑
     - 不应答权限询问：会弹询问的操作一律拒绝，编辑工作目录内的文件自动放行
+    - 放行沙箱内的 Bash 与只读的 Read：用户日常用 bypassPermissions，复合命令不会被拦；
+      不放行的话，含 ; && 管道或多行脚本的命令都会被拒，代理连测试都跑不了，对照环境比日常严得多。
+      编辑不放行到工作目录以外，免得规则里「收尾写知识库」一类动作写进真实目录
     - 排除用户级 CLAUDE.md（及其软链目标）：各组之间只差项目里的规则文件
     - 不加载 MCP 与 skills、不保存会话：减少与规则无关的变量，也不往会话列表里留记录
     """
@@ -282,6 +322,7 @@ def claude_argv(prompt: str, model: str, home: Path, budget_usd: float | None = 
     settings = {
         "sandbox": {"enabled": True, "allowUnsandboxedCommands": False, "failIfUnavailable": True},
         "claudeMdExcludes": sorted({str(user_rules), str(Path(os.path.realpath(user_rules)))}),
+        "permissions": {"allow": ["Bash", "Read"]},
     }
     argv = ["claude", "-p", prompt, "--model", model, "--output-format", "json",
             "--permission-mode", "acceptEdits", "--permission-prompts", "none",
