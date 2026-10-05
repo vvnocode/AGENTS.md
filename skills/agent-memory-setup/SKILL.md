@@ -15,7 +15,7 @@ description: Use when a repo is worked on by more than one coding agent (Claude 
 
 | | Claude Code | Codex | dsh | opencode |
 |---|---|---|---|---|
-| 读项目指令 | 只读 `CLAUDE.md`（**不读 `AGENTS.md`**） | 只读 `AGENTS.md` | `AGENTS.md`（也认 `CLAUDE.md`） | 只读 `AGENTS.md` |
+| 读项目指令 | 有 `CLAUDE.md` 时只读它；v2.1.277 起仓库及上级目录没有 `CLAUDE.md` / `CLAUDE.local.md` 时才直接读 `AGENTS.md` | 只读 `AGENTS.md` | `AGENTS.md`（也认 `CLAUDE.md`） | 只读 `AGENTS.md` |
 | 自带跨会话记忆 | 有；目录可改：`autoMemoryDirectory` | 有；目录**不可改**，固定 `$CODEX_HOME/memories`，由 `memory-sync` 按 cwd 同步为仓内 `.memory/` 普通条目 | 无 | 无 |
 | 记忆读写规则来源 | 自身系统提示 + `AGENTS.md` | 仅 `AGENTS.md` | 仅 `AGENTS.md` | 仅 `AGENTS.md` |
 | 用户级指令 | `~/.claude/CLAUDE.md` | `~/.codex/AGENTS.md` | `$DSH_HOME/AGENTS.md`（默认 `~/.dsh/`） | `~/.config/opencode/AGENTS.md` |
@@ -53,7 +53,7 @@ powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\.agents\skills\agent-
 
 | 陷阱 | 后果 | 应对 |
 |---|---|---|
-| 没有 `CLAUDE.md` | Claude 完全不读项目规则，**无任何提示** | 必须有一行 `@AGENTS.md` |
+| 没有 `CLAUDE.md` | v2.1.277 之前的 Claude Code 完全不读项目规则，**无任何提示**；之后的版本会直接读 `AGENTS.md`，但加一份 `CLAUDE.local.md` 又会让它不再读，部分会话（升级后的首个会话等）也读不到 | 保留一行 `@AGENTS.md`：各版本都生效，官方说明引用行不会让 `AGENTS.md` 被加载两次 |
 | `CLAUDE.md` 是入库的软链 | Windows 检出后变成只含 `AGENTS.md` 的文本文件，Claude 读到的是这四个字 | 改为 `@AGENTS.md` 引用行，脚本会自动迁移 |
 | Codex 项目未被信任 | `.codex/` 的 config、hooks、exec policies **整体**不加载（skills 仍加载），**静默失效**，只在 app-server 的 stderr 报一行 | `~/.codex/config.toml` 的 `[projects."<仓库绝对路径>"]` 下加 `trust_level = "trusted"`，脚本收尾按实际路径打印；仓库改路径要重做 |
 | 拿 `codex doctor` 当证据 | 只报全局配置，得出反向结论 | 用 `codex-effective-config.py` |

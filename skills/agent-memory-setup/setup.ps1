@@ -103,7 +103,9 @@ cannot settle (AGENTS.md and CLAUDE.md both plain files with different content) 
     Push-Location -LiteralPath $Root
     try {
         # -- 1) One instruction file: AGENTS.md is the source, CLAUDE.md holds a single import line @AGENTS.md --
-        #    Claude Code reads only CLAUDE.md; Codex / dsh / opencode read AGENTS.md. An import line instead of a symlink
+        #    Claude Code reads CLAUDE.md when one exists (since v2.1.277 it reads AGENTS.md directly only when there is no
+        #    CLAUDE.md / CLAUDE.local.md); Codex / dsh / opencode read AGENTS.md. The import line works on every version
+        #    and keeps working if a CLAUDE.local.md is added later. An import line instead of a symlink
         #    needs no privilege and survives a checkout on any platform. Links left by the old approach are migrated here.
         $ImportLine = '@AGENTS.md'
         function Write-Import { Write-File 'CLAUDE.md' ($ImportLine + "`n") }

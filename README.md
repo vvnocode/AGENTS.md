@@ -1,6 +1,6 @@
 # AGENTS.md：跨工具 AI 编程协作规范
 
-一份可移植、可审查、可版本控制的 AI 编程协作规范。以单一 Markdown 文件为规则源，通过符号链接或项目级入口复用于 Claude Code、Codex、Gemini CLI、OpenCode、Cursor、DeepSeek Harness 等工具。
+一份可移植、可审查、可版本控制的 AI 编程协作规范。以单一 Markdown 文件为规则源，通过符号链接或项目级入口复用于 Claude Code、Codex、Antigravity CLI（原 Gemini CLI）、OpenCode、Cursor、DeepSeek Harness 等工具。
 
 [快速开始](#快速开始) · [支持矩阵](#支持矩阵) · [接线一个仓库](#接线一个仓库) · [两件套](#两件套) · [项目级接入](#项目级接入) · [更新](#更新规则) · [参与贡献](#参与贡献) · [许可](#许可)
 
@@ -38,20 +38,22 @@
 
 | 工具 | 用户级入口 | 项目级入口 | 全局 Skill 发现根 | 官方说明 |
 |---|---|---|---|---|
-| Claude Code | `~/.claude/CLAUDE.md` | `./CLAUDE.md` | `~/.claude/skills/` | [Memory](https://code.claude.com/docs/en/memory) |
+| Claude Code | `~/.claude/CLAUDE.md` | `./CLAUDE.md`；v2.1.277 起没有 `CLAUDE.md` 时直接读 `./AGENTS.md` | `~/.claude/skills/` | [Memory](https://code.claude.com/docs/en/memory) |
 | Codex | `~/.codex/AGENTS.md` | `./AGENTS.md` | `~/.codex/skills/` | [Codex manual](https://developers.openai.com/codex/codex-manual.md) |
-| Gemini CLI | `~/.gemini/GEMINI.md` | `./GEMINI.md` | 待核验 | [Provide context with GEMINI.md](https://geminicli.com/docs/cli/gemini-md/) |
+| Antigravity CLI（接替 Gemini CLI） | `~/.gemini/GEMINI.md` | `./GEMINI.md` 或 `./AGENTS.md` | `~/.gemini/antigravity-cli/skills/`（安装脚本未挂载） | [Gemini CLI migration](https://antigravity.google/docs/cli/gcli-migration) |
 | OpenCode | `~/.config/opencode/AGENTS.md` | `./AGENTS.md` | `~/.config/opencode/skills/`，也扫 `~/.claude/skills/` 与 `~/.agents/skills/` | [Rules](https://opencode.ai/docs/en/rules/) |
 | DeepSeek Harness | `$DSH_HOME/AGENTS.md`，默认 `~/.dsh/AGENTS.md` | `./AGENTS.md` 或 `./CLAUDE.md` | `~/.agents/skills/` | [Agent instructions](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/context/agent-instructions/README.md) |
 | Cursor | 设置中的 User Rules | `./AGENTS.md` 或 `.cursor/rules/` | 待核验 | [Rules](https://cursor.com/docs/rules) |
 
+Gemini CLI 自 2026-06-18 起对 Gemini Code Assist 个人版、Google AI Pro 与 Ultra 账号停止服务（[Google Cloud release notes](https://docs.cloud.google.com/gemini/docs/release-notes)）；接替它的 Antigravity CLI 沿用同一组规则入口，原有的 `~/.gemini/GEMINI.md` 软链无需改动。
+
 “支持”表示目标工具能够读取对应入口中的 Markdown 规则，不表示不同工具会以完全相同的优先级、上下文预算或合并算法处理它。项目规则、目录级规则和组织托管规则可能覆盖本文件。
 
-「全局 Skill 发现根」列供 Skill 挂载时参考（本仓 `install.sh` 就按它把 `skills/agent-memory-setup` 挂到三处）：`~/.agents/skills/` 是跨工具约定俗成的 canonical 根，Cline、Dexto、Kimi、Warp、Zed 等只读它；Claude Code 与 Codex 不扫它、只认自己的目录。把一个 skill 软链到 `~/.agents/skills/`、`~/.claude/skills/`、`~/.codex/skills/` 三处即可覆盖上表已核验的工具。标「待核验」的格子尚未按实物核对，不要凭印象填写。本表是这三类路径的唯一正本，其他仓库只链接、不另维护。
+「全局 Skill 发现根」列供 Skill 挂载时参考（本仓 `install.sh` 就按它把 `skills/agent-memory-setup` 挂到三处）：`~/.agents/skills/` 是跨工具约定俗成的 canonical 根，Cline、Dexto、Kimi、Warp、Zed 等只读它；Claude Code 与 Codex 不扫它、只认自己的目录。把一个 skill 软链到 `~/.agents/skills/`、`~/.claude/skills/`、`~/.codex/skills/` 三处即可覆盖上表除 Antigravity CLI 以外已核验的工具。标「待核验」的格子尚未按实物核对，不要凭印象填写。本表是这三类路径的唯一正本，其他仓库只链接、不另维护。
 
 ## 快速开始
 
-一条命令把仓库 clone 到 `~/.vvnocode/rules`，把 `AGENTS.md` 软链到各工具的用户级规则入口（Claude Code、Codex、Gemini CLI、OpenCode、DeepSeek Harness），并把 `skills/agent-memory-setup` 软链到三处全局 Skill 发现根。幂等：重跑即更新，已存在的目标只告警不覆盖。
+一条命令把仓库 clone 到 `~/.vvnocode/rules`，把 `AGENTS.md` 软链到各工具的用户级规则入口（Claude Code、Codex、Gemini CLI / Antigravity CLI、OpenCode、DeepSeek Harness），并把 `skills/agent-memory-setup` 软链到三处全局 Skill 发现根。幂等：重跑即更新，已存在的目标只告警不覆盖。
 
 **macOS / Linux**：
 
@@ -119,7 +121,7 @@ PROJECT_ROOT="/path/to/project"
 # 只创建本机实际使用的入口，不覆盖已有项目规则，也不要提交这些绝对路径链接。
 ln -s "$RULES_FILE" "$PROJECT_ROOT/CLAUDE.md"  # Claude Code
 ln -s "$RULES_FILE" "$PROJECT_ROOT/AGENTS.md"  # Codex、OpenCode、Cursor、DeepSeek Harness
-ln -s "$RULES_FILE" "$PROJECT_ROOT/GEMINI.md"  # Gemini CLI
+ln -s "$RULES_FILE" "$PROJECT_ROOT/GEMINI.md"  # Gemini CLI、Antigravity CLI
 ```
 
 团队共享时，应把适用的通用规则复制或整理到项目自己的规则文件中，再提交该实际文件。这样每个协作者检出仓库后都能获得相同配置，也可以在项目内独立审查后续变更。
