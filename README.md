@@ -188,8 +188,8 @@ git -C "$RULES_HOME" merge --ff-only origin/main
 - **默认值与项目约束分离**：全局规则提供基线，项目规则负责具体命令和架构事实。
 - **可验证性优先**：所有“完成”“修复”“通过”都应有本轮执行证据。
 - **最小必要修改**：每一处变更都应能够追溯到明确需求。
-- **条文带理由，底线之外留裁量**：能力强的模型会从理由泛化，绝对化的命令只会被过度执行。工程纪律里只有三条底线不可裁量，其余条文与现场冲突时由模型说明理由后按判断走。
-- **行为类条款有保质期**：矫正模型行为的条款是在替某一代模型的短板说话，换主力模型时复核，不带规则也做得到的就删除；偏好、流程政策、授权边界与环境事实不在此列。2026-10 依据 Anthropic 的 [Prompting best practices](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices)、OpenAI 的 [Rethinking skills and prompts for GPT-6 Astra](https://developers.openai.com/blog/rethinking-skills-and-prompts-for-gpt-6-astra) 与 Claude Code 的 [CLAUDE.md 编写建议](https://code.claude.com/docs/en/memory#write-effective-instructions)做过一轮，正文由 239 行减到 122 行。此后的复核用 [`evals/`](./evals/README.md) 的场景集：带规则与不带规则各跑几次，按结果增删。
+- **条文带理由，底线之外留裁量**：能力强的模型会从理由泛化，绝对化的命令只会被过度执行。工程纪律的条文与现场冲突时，由模型说明理由后按判断走；三条底线和写明要用户确认的地方不在裁量之内。
+- **行为类条款有保质期**：矫正模型行为的条款是在替某一代模型的短板说话，换主力模型时复核，不带规则也做得到的就删除；偏好、流程政策、授权边界与环境事实不在此列。2026-10 以 Claude Opus 5.5、Fable 5.1 与 GPT-6 系列为主力模型，依据 Anthropic 的 [Prompting best practices](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices)、OpenAI 的 [Rethinking skills and prompts for GPT-6 Astra](https://developers.openai.com/blog/rethinking-skills-and-prompts-for-gpt-6-astra) 与 Claude Code 的 [CLAUDE.md 编写建议](https://code.claude.com/docs/en/memory#write-effective-instructions)做过一轮，正文由 239 行减到 123 行；这一轮的依据是厂商文档与上游变更，对照运行尚未做。此后的复核用 [`evals/`](./evals/README.md) 的场景集：带规则与不带规则各跑几次，按结果增删。
 - **安全公开**：公开版本不包含个人身份信息、机器路径或秘密材料。
 
 ## 参与贡献
@@ -207,7 +207,7 @@ git -C "$RULES_HOME" merge --ff-only origin/main
 
 ## 来源与致谢
 
-- 通用行为准则：节选自 [multica-ai/andrej-karpathy-skills](https://github.com/multica-ai/andrej-karpathy-skills) 的 `CLAUDE.md`，保留「简单优先」「外科手术式修改」两条并压缩；「编码前先思考」「目标驱动执行」两条所矫正的行为在当前主力模型上已成默认，2026-10 移除。
+- 通用行为准则：节选自 [multica-ai/andrej-karpathy-skills](https://github.com/multica-ai/andrej-karpathy-skills) 的 `CLAUDE.md`，保留「简单优先」「外科手术式修改」两条并压缩；「编码前先思考」无门槛的提问要求与工程纪律里有门槛的版本相抵（其中「说明假设」「指出更简单的方案」两点并入工程纪律），「目标驱动执行」要求的定标准、循环验证在当前主力模型上已成默认，两条于 2026-10 移除。
 - 工程纪律：提炼自 [obra/superpowers](https://github.com/obra/superpowers) v6.3.0，「plan 只记决策、不誊写代码」一条跟进其 v6.4.2。本文件始终加载，只保留始终有效的纪律，不照搬插件按需加载时的完整仪式。
 
 这些来源提供方法论基础，本仓库负责跨工具适配、中文维护和公开版本的隐私处理。
