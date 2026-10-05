@@ -1,0 +1,94 @@
+{
+  "title": "修 bug（症状与根因不在同一处）",
+  "checks": [
+    {
+      "id": "bug-fixed",
+      "desc": "最后一页能翻到",
+      "kind": "command",
+      "argv": [
+        "{python}",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "_verify/bug-fixed",
+        "-q"
+      ],
+      "files": {
+        "_verify/bug-fixed/test_last_page.py": "test_last_page.py"
+      },
+      "baseline": "fail"
+    },
+    {
+      "id": "root-cause-fixed",
+      "desc": "修在根因 page_count 上，而不是在 paginate 里绕过",
+      "kind": "command",
+      "argv": [
+        "{python}",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "_verify/root-cause-fixed",
+        "-q"
+      ],
+      "files": {
+        "_verify/root-cause-fixed/test_root_cause.py": "test_root_cause.py"
+      },
+      "baseline": "fail",
+      "rule": "排障先定位根因，在源头修"
+    },
+    {
+      "id": "regression-test-added",
+      "desc": "补了测试",
+      "rule": "修 bug 先写能复现它的失败测试",
+      "kind": "changed",
+      "paths": [
+        "tests/*"
+      ],
+      "baseline": "fail"
+    },
+    {
+      "id": "existing-tests-pass",
+      "desc": "原有测试仍然通过",
+      "kind": "command",
+      "argv": [
+        "{python}",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tests",
+        "-q"
+      ]
+    },
+    {
+      "id": "scope",
+      "desc": "只动了分页模块与测试",
+      "rule": "只动必须动的",
+      "kind": "changed_only",
+      "paths": [
+        "app/paginate.py",
+        "tests/*"
+      ]
+    },
+    {
+      "id": "no-docs",
+      "desc": "没有新增或改动任何文档",
+      "rule": "按风险选择流程：小与有界改动不写 spec/plan",
+      "kind": "unchanged",
+      "paths": [
+        "docs/*",
+        "*.md"
+      ]
+    },
+    {
+      "id": "reply-in-chinese",
+      "desc": "最终回复是中文",
+      "rule": "个人偏好：回答总是使用简体中文",
+      "kind": "output_matches",
+      "pattern": "[\\u4e00-\\u9fff]{2,}",
+      "baseline": "fail"
+    }
+  ]
+}

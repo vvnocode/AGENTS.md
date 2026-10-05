@@ -168,13 +168,14 @@ git -C "$RULES_HOME" merge --ff-only origin/main
 .
 ├── .gitignore   # 本地配置、凭据和临时文件的忽略规则
 ├── AGENTS.md    # 跨工具复用的唯一规则源
+├── evals/       # 规则回归集：带规则与不带规则对照运行同一批场景，判断某条规则是否还需要
 ├── install.sh   # 一键安装（macOS / Linux）：clone 到 ~/.vvnocode/rules，软链各规则入口与 skill
 ├── install.ps1  # 一键安装（Windows），纯 ASCII
 ├── LICENSE      # CC0 1.0 Universal 完整法律文本
 ├── README.md    # 安装、兼容性、维护和贡献说明
 ├── skills/
 │   └── agent-memory-setup/   # 单仓接线 skill：setup.sh/.ps1、worktree-share.sh/.ps1、post-checkout 钩子模板、Codex 探针
-└── tests/       # 安装、接线与 worktree 共享脚本的离线契约测试：python3 -m unittest discover -s tests
+└── tests/       # 安装、接线、worktree 共享脚本与回归集运行器的离线契约测试：python3 -m unittest discover -s tests
 ```
 
 `.ps1` 测试需要 `pwsh`（或 Windows PowerShell），没有则自动跳过；三个 Windows 专属用例（钩子端到端、已有联接只告警、删 worktree 不伤根工作区）只在 Windows 上运行。Windows 上 `.sh` 套件整体跳过（`.sh` 不是 Windows 的支持路径）。
@@ -188,7 +189,7 @@ git -C "$RULES_HOME" merge --ff-only origin/main
 - **可验证性优先**：所有“完成”“修复”“通过”都应有本轮执行证据。
 - **最小必要修改**：每一处变更都应能够追溯到明确需求。
 - **条文带理由，底线之外留裁量**：能力强的模型会从理由泛化，绝对化的命令只会被过度执行。工程纪律里只有三条底线不可裁量，其余条文与现场冲突时由模型说明理由后按判断走。
-- **行为类条款有保质期**：矫正模型行为的条款是在替某一代模型的短板说话，换主力模型时复核，不带规则也做得到的就删除；偏好、流程政策、授权边界与环境事实不在此列。2026-10 依据 Anthropic 的 [Prompting best practices](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices)、OpenAI 的 [Rethinking skills and prompts for GPT-6 Astra](https://developers.openai.com/blog/rethinking-skills-and-prompts-for-gpt-6-astra) 与 Claude Code 的 [CLAUDE.md 编写建议](https://code.claude.com/docs/en/memory#write-effective-instructions)做过一轮，正文由 239 行减到 122 行。
+- **行为类条款有保质期**：矫正模型行为的条款是在替某一代模型的短板说话，换主力模型时复核，不带规则也做得到的就删除；偏好、流程政策、授权边界与环境事实不在此列。2026-10 依据 Anthropic 的 [Prompting best practices](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices)、OpenAI 的 [Rethinking skills and prompts for GPT-6 Astra](https://developers.openai.com/blog/rethinking-skills-and-prompts-for-gpt-6-astra) 与 Claude Code 的 [CLAUDE.md 编写建议](https://code.claude.com/docs/en/memory#write-effective-instructions)做过一轮，正文由 239 行减到 122 行。此后的复核用 [`evals/`](./evals/README.md) 的场景集：带规则与不带规则各跑几次，按结果增删。
 - **安全公开**：公开版本不包含个人身份信息、机器路径或秘密材料。
 
 ## 参与贡献
@@ -197,6 +198,7 @@ git -C "$RULES_HOME" merge --ff-only origin/main
 
 - 变更适用于多个项目或工具，而不是单个仓库的偶然需求。
 - 新规则解决了明确问题，并且没有与现有条目重复或冲突。
+- 矫正模型行为的新规则附一个能复现该问题的 [`evals/`](./evals/README.md) 场景；模型第二次犯同样的错再加，而不是预防性地加。
 - 工具路径、文件名和加载行为附有官方文档依据。
 - 文档示例不会覆盖用户已有配置，也不包含真实凭据或个人路径。
 - Pull Request 说明包含修改原因、影响范围和验证方式。

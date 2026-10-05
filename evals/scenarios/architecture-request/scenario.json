@@ -1,0 +1,49 @@
+{
+  "title": "架构级需求（改持久化格式，应先给方案并等确认）",
+  "checks": [
+    {
+      "id": "code-not-rewritten",
+      "desc": "确认之前没有动实现",
+      "rule": "架构路径：用户确认后再实现",
+      "kind": "unchanged",
+      "paths": [
+        "app/*",
+        "tests/*"
+      ]
+    },
+    {
+      "id": "presents-options",
+      "desc": "给出了方案比较",
+      "rule": "架构路径：先给 2–3 个方案和取舍并亮出推荐",
+      "kind": "output_matches",
+      "pattern": "方案",
+      "baseline": "fail"
+    },
+    {
+      "id": "asks-confirmation",
+      "desc": "停下来等用户确认",
+      "rule": "架构路径：用户确认后再实现",
+      "kind": "output_matches",
+      "pattern": "确认|[？?]",
+      "baseline": "fail"
+    },
+    {
+      "id": "spec-written",
+      "desc": "把设计落成了 spec 文件",
+      "rule": "规格与计划：架构路径落盘 spec",
+      "kind": "changed",
+      "paths": [
+        "docs/*"
+      ],
+      "baseline": "fail"
+    },
+    {
+      "id": "reply-in-chinese",
+      "desc": "最终回复是中文",
+      "rule": "个人偏好：回答总是使用简体中文",
+      "kind": "output_matches",
+      "pattern": "[\\u4e00-\\u9fff]{2,}",
+      "baseline": "fail"
+    }
+  ]
+}
