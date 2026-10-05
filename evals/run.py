@@ -474,6 +474,8 @@ def main() -> int:
     parser.add_argument("--results", type=Path, default=DEFAULT_RESULTS, help="结果目录")
     parser.add_argument("--keep", action="store_true", help="保留每次运行的临时工作区，便于人工查看")
     args = parser.parse_args()
+    # 统一成绝对路径：setup 步骤在临时工作区里执行，相对路径到那里就失效了
+    args.scenarios, args.results = args.scenarios.resolve(), args.results.resolve()
 
     try:
         scenarios = discover(args.scenarios, [n for n in args.only.split(",") if n])

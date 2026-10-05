@@ -283,6 +283,10 @@ class RuleEvalsTest(unittest.TestCase):
         s = self.run_eval("--arm", "none")
         self.assertEqual(self.checks_of(s, "scripted", "none"), {"branch": True, "file": True})
         self.assertEqual(self.run_py("--validate").returncode, 0)
+        # 场景目录用相对路径给出：setup 在临时工作区里执行，运行器必须先把它转成绝对路径
+        relative = subprocess.run([sys.executable, str(RUN_PY), "--scenarios", "scenarios", "--validate"],
+                                  cwd=self.tmp, capture_output=True, text=True, timeout=120)
+        self.assertEqual(relative.returncode, 0, relative.stdout + relative.stderr)
 
     # ── 运行控制与汇总 ──
     def test_timeout_is_recorded_and_does_not_abort_the_round(self) -> None:
