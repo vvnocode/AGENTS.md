@@ -346,11 +346,13 @@ def parse_claude_output(stdout: str) -> dict:
             tokens = None
             if usage is not None:
                 tokens = sum(int(usage.get(k) or 0) for k in ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"))
+            # 报错且一个输入 token 都没用掉：请求没发出去，代理没有真正开始（如并发启动时抢着刷新登录令牌）
+            never_started = bool(data.get("is_error")) and tokens == 0
             return {"text": str(data.get("result") or ""), "cost_usd": data.get("total_cost_usd"),
-                    "turns": data.get("num_turns"), "input_tokens": tokens}
+                    "turns": data.get("num_turns"), "input_tokens": tokens, "never_started": never_started}
     except ValueError:
         pass
-    return {"text": stdout.strip(), "cost_usd": None, "turns": None, "input_tokens": None}
+    return {"text": stdout.strip(), "cost_usd": None, "turns": None, "input_tokens": None, "never_started": False}
 
 
 def run_process(argv: list, cwd: Path, timeout: int) -> tuple:
@@ -388,7 +390,7 @@ def run_agent(args: argparse.Namespace, prompt: str, prompt_file: Path, workspac
         subst = {"{python}": sys.executable, "{prompt_file}": str(prompt_file), "{workspace}": str(workspace), "{model}": args.model or ""}
         argv = [subst.get(token, token) for token in shlex.split(args.agent_cmd)]
         status, out, err, seconds = run_process(argv, workspace, args.timeout)
-        parsed = {"text": out.strip(), "cost_usd": None, "turns": None, "input_tokens": None}
+        parsed = {"text": out.strip(), "cost_usd": None, "turns": None, "input_tokens": None, "never_started": False}
     else:
         argv = claude_argv(prompt, args.model or "opus", Path.home(), args.budget_usd)
         status, out, err, seconds = run_process(argv, workspace, args.timeout)
@@ -403,10 +405,19 @@ def run_one(args: argparse.Namespace, scenario: dict, arm: str, rules_text: str 
     workspace = tmp / "ws"
     record = {"scenario": scenario["name"], "arm": arm, "rep": rep}
     try:
-        baseline = materialize(scenario, rules_text, workspace)
         prompt_file = tmp / "prompt.md"            # 放在工作区之外，不算改动
         prompt_file.write_text(scenario["prompt"], encoding="utf-8")
-        result = run_agent(args, scenario["prompt"], prompt_file, workspace)
+        attempts = 0
+        while True:
+            attempts += 1
+            baseline = materialize(scenario, rules_text, workspace)
+            result = run_agent(args, scenario["prompt"], prompt_file, workspace)
+            # 代理没真正开始就失败时重试：2026-10-06 六路并发启动，前 12 次全因抢着刷新登录令牌而失败。
+            # 每次重试换一个干净的工作区，间隔逐次加长；重试用尽仍起不来就如实记为失败
+            if not result["never_started"] or attempts > args.retries:
+                break
+            shutil.rmtree(workspace, ignore_errors=True)
+            time.sleep(args.retry_delay * attempts)
         checks: dict = {}
         changes: dict = {}
         if result["status"] != "timeout":
@@ -424,9 +435,10 @@ def run_one(args: argparse.Namespace, scenario: dict, arm: str, rules_text: str 
         (out_dir / "changes.json").write_text(json.dumps(changes, ensure_ascii=False, indent=2), encoding="utf-8")
         (out_dir / "checks.json").write_text(json.dumps(checks, ensure_ascii=False, indent=2), encoding="utf-8")
         record.update(status=result["status"], seconds=result["seconds"], cost_usd=result["cost_usd"],
-                      turns=result["turns"], input_tokens=result["input_tokens"], output=result["text"], checks=checks)
+                      turns=result["turns"], input_tokens=result["input_tokens"], attempts=attempts,
+                      output=result["text"], checks=checks)
     except Exception as exc:  # 单次运行自身出错（如 setup 失败）只记一条，不拖垮整轮
-        record.update(status="runner_error", seconds=0, cost_usd=None, turns=None, input_tokens=None,
+        record.update(status="runner_error", seconds=0, cost_usd=None, turns=None, input_tokens=None, attempts=None,
                       output=f"运行器出错：{exc}", checks={})
     finally:
         if args.keep:
@@ -434,7 +446,8 @@ def run_one(args: argparse.Namespace, scenario: dict, arm: str, rules_text: str 
         else:
             shutil.rmtree(tmp, ignore_errors=True)
     passed = sum(1 for v in record["checks"].values() if v)
-    log(f"  {scenario['name']} / {arm} #{rep}: {record['status']}，检查 {passed}/{len(scenario['checks'])}，{record['seconds']} 秒")
+    retried = f"，第 {record['attempts']} 次尝试" if (record.get("attempts") or 1) > 1 else ""
+    log(f"  {scenario['name']} / {arm} #{rep}: {record['status']}，检查 {passed}/{len(scenario['checks'])}，{record['seconds']} 秒{retried}")
     return record
 
 
@@ -521,6 +534,8 @@ def main() -> int:
     parser.add_argument("--repeat", type=int, default=1, help="每个场景每组重复的次数（默认 1）")
     parser.add_argument("--jobs", type=int, default=1, help="并发运行数（默认 1）")
     parser.add_argument("--timeout", type=int, default=900, help="单次运行的超时秒数（默认 900）")
+    parser.add_argument("--retries", type=int, default=2, help="代理没真正开始就失败时的重试次数（默认 2）")
+    parser.add_argument("--retry-delay", type=float, default=15, help="重试前等待的秒数，逐次加倍计（默认 15）")
     parser.add_argument("--model", default=None, help="交给代理的模型名；Claude Code 适配器缺省为 opus")
     parser.add_argument("--budget-usd", type=float, default=None, help="单次运行的费用上限（仅 Claude Code 适配器）")
     parser.add_argument("--agent-cmd", default=None,
