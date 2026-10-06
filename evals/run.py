@@ -61,6 +61,7 @@ CHECK_KINDS = {
     "unchanged": ("paths",),             # 给定通配内没有任何改动
     "changed": ("paths",),               # 给定通配内至少有一处改动
     "max_added_lines": ("paths", "limit"),  # 给定通配内新增行数之和不超过 limit
+    "max_added_code_lines": ("paths", "limit"),  # 同上，但只数代码行：空行、注释、文档字符串不算
     "output_matches": ("pattern",),      # 最终回复匹配正则
     "output_not_matches": ("pattern",),  # 最终回复不匹配正则
     "file_matches": ("path", "pattern"),      # 文件存在且内容匹配正则
@@ -211,6 +212,39 @@ def collect_changes(workspace: Path, baseline_commit: str) -> dict:
     return changes
 
 
+def added_lines(workspace: Path, baseline_commit: str, path: str) -> list:
+    """取某个改动路径新增的行（不含行首的 +）：已跟踪的看相对基线的 diff，未跟踪的整份文件都算新增。"""
+    target = workspace / path
+    tracked = git(workspace, "ls-files", "--error-unmatch", "--", path, check=False).returncode == 0
+    if not tracked:
+        return target.read_text(encoding="utf-8", errors="replace").splitlines() if target.is_file() else []
+    diff = git(workspace, "diff", "-U0", "--no-color", baseline_commit, "--", path).stdout
+    return [line[1:] for line in diff.splitlines() if line.startswith("+") and not line.startswith("+++")]
+
+
+def count_code_lines(lines: list) -> int:
+    """按 Python 的写法粗数代码行：跳过空行、整行注释与文档字符串（三引号块，含单行的）。
+
+    用户要求新代码带详细注释，「简单优先」若按总行数判，会把注释量当成过度设计。
+    """
+    count, in_doc, delim = 0, False, ""
+    for raw in lines:
+        s = raw.strip()
+        if in_doc:
+            if delim in s:          # 文档字符串在这一行结束
+                in_doc = False
+            continue
+        if not s or s.startswith("#"):
+            continue
+        if s.startswith(('"""', "'''")):
+            q = s[:3]
+            if s == q or s.count(q) < 2:   # 文档字符串开始、本行没有结束
+                in_doc, delim = True, q
+            continue
+        count += 1
+    return count
+
+
 # ── 检查 ──
 def eval_check(check: dict, scenario: dict, workspace: Path, output: str, changes: dict, baseline: dict) -> bool:
     """执行一条检查，返回是否通过。"""
@@ -223,6 +257,9 @@ def eval_check(check: dict, scenario: dict, workspace: Path, output: str, change
         return any(match_any(p, check["paths"]) for p in changes)
     if kind == "max_added_lines":
         return sum(n for p, n in changes.items() if match_any(p, check["paths"])) <= check["limit"]
+    if kind == "max_added_code_lines":
+        total = sum(count_code_lines(added_lines(workspace, baseline["commit"], p)) for p in changes if match_any(p, check["paths"]))
+        return total <= check["limit"]
     if kind in ("output_matches", "output_not_matches"):
         found = re.search(check["pattern"], output, re.M) is not None
         return found if kind == "output_matches" else not found
@@ -275,6 +312,9 @@ def claude_argv(prompt: str, model: str, home: Path, budget_usd: float | None = 
 
     - 沙箱开启且不许退到沙箱外重试：命令只能写工作目录、没有网络；沙箱起不来就不跑
     - 不应答权限询问：会弹询问的操作一律拒绝，编辑工作目录内的文件自动放行
+    - 放行沙箱内的 Bash 与只读的 Read：用户日常用 bypassPermissions，复合命令不会被拦；
+      不放行的话，含 ; && 管道或多行脚本的命令都会被拒，代理连测试都跑不了，对照环境比日常严得多。
+      编辑不放行到工作目录以外，免得规则里「收尾写知识库」一类动作写进真实目录
     - 排除用户级 CLAUDE.md（及其软链目标）：各组之间只差项目里的规则文件
     - 不加载 MCP 与 skills、不保存会话：减少与规则无关的变量，也不往会话列表里留记录
     """
@@ -282,6 +322,7 @@ def claude_argv(prompt: str, model: str, home: Path, budget_usd: float | None = 
     settings = {
         "sandbox": {"enabled": True, "allowUnsandboxedCommands": False, "failIfUnavailable": True},
         "claudeMdExcludes": sorted({str(user_rules), str(Path(os.path.realpath(user_rules)))}),
+        "permissions": {"allow": ["Bash", "Read"]},
     }
     argv = ["claude", "-p", prompt, "--model", model, "--output-format", "json",
             "--permission-mode", "acceptEdits", "--permission-prompts", "none",
@@ -293,14 +334,23 @@ def claude_argv(prompt: str, model: str, home: Path, budget_usd: float | None = 
 
 
 def parse_claude_output(stdout: str) -> dict:
-    """解析 claude -p --output-format json 的结果；不是 JSON 时把原文当作最终回复。"""
+    """解析 claude -p --output-format json 的结果；不是 JSON 时把原文当作最终回复。
+
+    input_tokens 是本次运行各轮输入之和（未缓存、写缓存、读缓存三项相加）。除以轮数就是每轮的上下文大小，
+    带规则与不带规则两组之差即规则文件进了上下文的证据，比看回复内容可靠。
+    """
     try:
         data = json.loads(stdout)
         if isinstance(data, dict):
-            return {"text": str(data.get("result") or ""), "cost_usd": data.get("total_cost_usd"), "turns": data.get("num_turns")}
+            usage = data.get("usage") if isinstance(data.get("usage"), dict) else None
+            tokens = None
+            if usage is not None:
+                tokens = sum(int(usage.get(k) or 0) for k in ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"))
+            return {"text": str(data.get("result") or ""), "cost_usd": data.get("total_cost_usd"),
+                    "turns": data.get("num_turns"), "input_tokens": tokens}
     except ValueError:
         pass
-    return {"text": stdout.strip(), "cost_usd": None, "turns": None}
+    return {"text": stdout.strip(), "cost_usd": None, "turns": None, "input_tokens": None}
 
 
 def run_process(argv: list, cwd: Path, timeout: int) -> tuple:
@@ -338,7 +388,7 @@ def run_agent(args: argparse.Namespace, prompt: str, prompt_file: Path, workspac
         subst = {"{python}": sys.executable, "{prompt_file}": str(prompt_file), "{workspace}": str(workspace), "{model}": args.model or ""}
         argv = [subst.get(token, token) for token in shlex.split(args.agent_cmd)]
         status, out, err, seconds = run_process(argv, workspace, args.timeout)
-        parsed = {"text": out.strip(), "cost_usd": None, "turns": None}
+        parsed = {"text": out.strip(), "cost_usd": None, "turns": None, "input_tokens": None}
     else:
         argv = claude_argv(prompt, args.model or "opus", Path.home(), args.budget_usd)
         status, out, err, seconds = run_process(argv, workspace, args.timeout)
@@ -374,9 +424,10 @@ def run_one(args: argparse.Namespace, scenario: dict, arm: str, rules_text: str 
         (out_dir / "changes.json").write_text(json.dumps(changes, ensure_ascii=False, indent=2), encoding="utf-8")
         (out_dir / "checks.json").write_text(json.dumps(checks, ensure_ascii=False, indent=2), encoding="utf-8")
         record.update(status=result["status"], seconds=result["seconds"], cost_usd=result["cost_usd"],
-                      turns=result["turns"], output=result["text"], checks=checks)
+                      turns=result["turns"], input_tokens=result["input_tokens"], output=result["text"], checks=checks)
     except Exception as exc:  # 单次运行自身出错（如 setup 失败）只记一条，不拖垮整轮
-        record.update(status="runner_error", seconds=0, cost_usd=None, turns=None, output=f"运行器出错：{exc}", checks={})
+        record.update(status="runner_error", seconds=0, cost_usd=None, turns=None, input_tokens=None,
+                      output=f"运行器出错：{exc}", checks={})
     finally:
         if args.keep:
             log(f"  保留工作区 {workspace}")
@@ -414,13 +465,17 @@ def render_report(meta: dict, scenarios: list, arms: list, runs: list, table: di
                          + " | ".join(f"{cells[a][0]}/{cells[a][1]}" for a in arms) + " |")
         lines.append("")
     # 开销：规则文件本身也有成本，按组看平均耗时、轮数与费用
-    lines += ["## 开销", "", "| 组 | 运行数 | 非正常结束 | 平均耗时（秒） | 平均轮数 | 平均费用（USD） |", "|---|---|---|---|---|---|"]
+    # 平均每轮输入：各组之间的差就是规则文件的体量，差为 0 说明规则没有进上下文
+    lines += ["## 开销", "", "| 组 | 运行数 | 非正常结束 | 平均耗时（秒） | 平均轮数 | 平均费用（USD） | 平均每轮输入（token） |",
+              "|---|---|---|---|---|---|---|"]
     for arm in arms:
         mine = [r for r in runs if r["arm"] == arm]
         def mean(key: str) -> str:
             values = [r[key] for r in mine if r.get(key) is not None]
             return f"{sum(values) / len(values):.2f}" if values else "—"
-        lines.append(f"| {arm} | {len(mine)} | {sum(1 for r in mine if r['status'] != 'ok')} | {mean('seconds')} | {mean('turns')} | {mean('cost_usd')} |")
+        per_turn = [r["input_tokens"] / r["turns"] for r in mine if r.get("input_tokens") and r.get("turns")]
+        per_turn_text = f"{sum(per_turn) / len(per_turn):.0f}" if per_turn else "—"
+        lines.append(f"| {arm} | {len(mine)} | {sum(1 for r in mine if r['status'] != 'ok')} | {mean('seconds')} | {mean('turns')} | {mean('cost_usd')} | {per_turn_text} |")
     lines.append("")
     # 两份清单只看标了对应规则的检查：一份是删除候选，一份是带了规则仍没做到的
     if "none" in arms:

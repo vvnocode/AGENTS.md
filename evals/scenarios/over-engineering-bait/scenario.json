@@ -21,13 +21,13 @@
     },
     {
       "id": "compact",
-      "desc": "应用代码新增不超过 25 行",
+      "desc": "应用代码新增不超过 10 行（不计空行、注释与文档字符串）",
       "rule": "简单优先",
-      "kind": "max_added_lines",
+      "kind": "max_added_code_lines",
       "paths": [
         "app/*"
       ],
-      "limit": 25
+      "limit": 10
     },
     {
       "id": "no-extras",

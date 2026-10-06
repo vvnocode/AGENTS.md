@@ -198,6 +198,35 @@ class RuleEvalsTest(unittest.TestCase):
         self.assertEqual(got, {"only-app": False, "app-and-docs": True, "no-docs": False, "tests-untouched": True,
                                "did-work": True, "added-test": False, "small": False, "roomy": True})
 
+    def test_code_line_count_ignores_comments_docstrings_and_blank_lines(self) -> None:
+        """「简单优先」看代码量，不看注释量：用户要求新代码带详细注释，按总行数算会把注释当成过度设计。"""
+        body = "\n".join([
+            "import json",
+            "",
+            "",
+            "def load(path):",
+            '    """读取配置。',
+            "",
+            "    多行文档字符串也不算代码。",
+            '    """',
+            "    # 注释行不算",
+            "    with open(path) as f:",
+            "        return json.load(f)  # 行尾带注释的这一行算代码",
+            "    '''单行文档字符串'''",
+            "",
+        ])
+        checks = [
+            {"id": "code-4", "desc": "代码不超过 4 行", "kind": "max_added_code_lines", "paths": ["app/*"], "limit": 4},
+            {"id": "code-3", "desc": "代码不超过 3 行", "kind": "max_added_code_lines", "paths": ["app/*"], "limit": 3},
+            {"id": "all-4", "desc": "总行数不超过 4 行", "kind": "max_added_lines", "paths": ["app/*"], "limit": 4},
+        ]
+        # 一份改已跟踪文件（走 diff），一份新建文件（走未跟踪），两条路径都要按同一规则数
+        self.make_scenario("tracked", [{"write": ["app/a.py", body]}], checks, files={"app/a.py": ""})
+        self.make_scenario("untracked", [{"write": ["app/new.py", body]}], checks)
+        s = self.run_eval("--arm", "none")
+        for name in ("tracked", "untracked"):
+            self.assertEqual(self.checks_of(s, name, "none"), {"code-4": True, "code-3": False, "all-4": False}, name)
+
     def test_untracked_file_lines_count_as_added(self) -> None:
         """新建文件未入库也要计入新增行数，否则整文件新增会被漏算。"""
         self.make_scenario("untracked", [{"write": ["app/new.py", "a = 1\nb = 2\nc = 3\n"]}],
@@ -329,6 +358,11 @@ class RuleEvalsTest(unittest.TestCase):
         self.assertFalse(settings["sandbox"]["allowUnsandboxedCommands"], "被沙箱拦下的命令不许退到沙箱外重试")
         self.assertTrue(settings["sandbox"]["failIfUnavailable"], "沙箱起不来就不跑，而不是裸跑")
         self.assertIn("/home/u/.claude/CLAUDE.md", settings["claudeMdExcludes"])
+        # 用户日常用 bypassPermissions，命令不会被拦；对照里只放行沙箱内的 Bash 与只读的 Read，
+        # 编辑仍靠 acceptEdits 限在工作目录内，免得规则里的「收尾写知识库」这类动作写到真实目录
+        self.assertEqual(sorted(settings["permissions"]["allow"]), ["Bash", "Read"])
+        self.assertIn("--permission-mode acceptEdits", joined)
+        self.assertNotIn("bypassPermissions", joined)
 
     @unittest.skipIf(os.name == "nt", "PATH 上的替身脚本依赖 shebang，Windows 不适用")
     def test_builtin_claude_adapter_end_to_end_with_stub_binary(self) -> None:
@@ -343,7 +377,10 @@ class RuleEvalsTest(unittest.TestCase):
             prompt = sys.argv[sys.argv.index("-p") + 1]
             pathlib.Path("app/a.py").write_text("x = 2\\n", encoding="utf-8")      # 在工作目录里留下改动
             rules = "有规则" if os.path.exists("AGENTS.md") else "无规则"
-            print(json.dumps({{"result": f"收到：{{prompt}}｜{{rules}}", "total_cost_usd": 0.25, "num_turns": 4}}, ensure_ascii=False))
+            usage = {{"input_tokens": 0, "cache_creation_input_tokens": 0,
+                      "cache_read_input_tokens": 6000 if rules == "有规则" else 4000}}  # 4 轮：每轮 1500 对 1000
+            print(json.dumps({{"result": f"收到：{{prompt}}｜{{rules}}", "total_cost_usd": 0.25, "num_turns": 4,
+                              "usage": usage}}, ensure_ascii=False))
             '''), encoding="utf-8")
         stub.chmod(0o755)
         d = self.make_scenario("builtin", [], [{"id": "did-work", "desc": "x", "kind": "changed", "paths": ["app/*"], "baseline": "fail"}])
@@ -360,13 +397,22 @@ class RuleEvalsTest(unittest.TestCase):
         self.assertEqual(by_arm["rules"]["output"], "收到：改一下 a.py\n｜有规则")
         for run in s["runs"]:
             self.assertEqual((run["status"], run["cost_usd"], run["turns"], run["checks"]), ("ok", 0.25, 4, {"did-work": True}))
+        self.assertEqual((by_arm["none"]["input_tokens"], by_arm["rules"]["input_tokens"]), (4000, 6000))
+        # 报告的开销表给出每组每轮的平均输入：两组之差就是规则文件进了上下文的证据
+        report = sorted(self.results.glob("*/report.md"))[-1].read_text(encoding="utf-8")
+        self.assertIn("平均每轮输入（token）", report)
+        self.assertRegex(report, r"\| none \|[^\n]*\| 1000 \|")
+        self.assertRegex(report, r"\| rules \|[^\n]*\| 1500 \|")
 
     def test_claude_output_parsing(self) -> None:
         run = load_run_module()
-        ok = run.parse_claude_output(json.dumps({"result": "完成", "total_cost_usd": 0.12, "num_turns": 7}))
-        self.assertEqual((ok["text"], ok["cost_usd"], ok["turns"]), ("完成", 0.12, 7))
+        usage = {"input_tokens": 10, "cache_creation_input_tokens": 200, "cache_read_input_tokens": 3000}
+        ok = run.parse_claude_output(json.dumps({"result": "完成", "total_cost_usd": 0.12, "num_turns": 7, "usage": usage}))
+        self.assertEqual((ok["text"], ok["cost_usd"], ok["turns"], ok["input_tokens"]), ("完成", 0.12, 7, 3210))
+        no_usage = run.parse_claude_output(json.dumps({"result": "完成"}))
+        self.assertIsNone(no_usage["input_tokens"])
         raw = run.parse_claude_output("不是 JSON 的报错文本")
-        self.assertEqual((raw["text"], raw["cost_usd"], raw["turns"]), ("不是 JSON 的报错文本", None, None))
+        self.assertEqual((raw["text"], raw["cost_usd"], raw["turns"], raw["input_tokens"]), ("不是 JSON 的报错文本", None, None, None))
 
 
 if __name__ == "__main__":

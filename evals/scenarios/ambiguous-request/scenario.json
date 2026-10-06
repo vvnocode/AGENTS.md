@@ -16,7 +16,7 @@
       "desc": "代码里出现了长度上限",
       "kind": "file_matches",
       "path": "app/slug.py",
-      "pattern": "max_len|max_length|maxlen|limit",
+      "pattern": "(?i)max_?len|max_?length|limit",
       "baseline": "fail"
     },
     {

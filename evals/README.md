@@ -46,9 +46,13 @@ python3 evals/run.py --arm none --arm old=git:main --arm new=AGENTS.md --repeat 
 python3 evals/run.py --only small-change --model haiku
 ```
 
-`small-change` 的提示词是英文。预期两次运行都以 `ok` 结束，且 `reply-in-chinese` 一行是 `none` 组 0/1、`rules` 组 1/1。如果 `none` 组也是中文回复，说明用户级规则文件没有被排除，对照不成立，先查 `run.py` 里的 `claudeMdExcludes`。
+预期两次运行都以 `ok` 结束，代理改对了文件，隐藏验收通过。
 
-本适配器的命令行参数与设置项按 Claude Code 2.1.285 的 `--help` 和官方文档写成，结果解析有替身测试覆盖；写入本文件时本机命令行版未登录，上面这条冒烟尚未实跑过。
+规则有没有进上下文，看报告开销表的「平均每轮输入（token）」：带规则一组应比 `none` 组多出规则文件的体量（现行 `AGENTS.md` 约 5.2k token）。两组相同，说明规则没有加载；`none` 组也多出这么多，说明用户级规则文件没有被排除，对照不成立，先查 `run.py` 里的 `claudeMdExcludes`。
+
+不要拿 `reply-in-chinese` 判断规则是否加载：2026-10-06 的冒烟里 haiku 在英文提示词下两组都用英文回复，而带规则一组每轮确实多了约 5.3k token，是模型没有遵守语言偏好。这一条留作检查项，衡量的正是模型遵不遵守。
+
+2026-10-06 在 Claude Code 2.1.285 上实跑过这条冒烟；另在空目录里比较过带与不带 `claudeMdExcludes` 各问一句的输入，相差 5,231 token，排除生效。
 
 ## 怎么读结果
 
@@ -98,6 +102,7 @@ scenarios/<名称>/
 | `unchanged` | `paths` | 通配内没有改动 |
 | `changed` | `paths` | 通配内至少有一处改动 |
 | `max_added_lines` | `paths`、`limit` | 通配内新增行数之和不超过 `limit` |
+| `max_added_code_lines` | `paths`、`limit` | 同上，但只数代码行：空行、整行注释与文档字符串不算（按 Python 写法粗判） |
 | `output_matches` / `output_not_matches` | `pattern` | 最终回复匹配 / 不匹配正则 |
 | `file_matches` / `file_not_matches` | `path`、`pattern` | 文件存在且匹配 / 不存在或不匹配 |
 | `command` | `argv`，可选 `files` | 命令退出码为 0；`files` 把 `verify/` 下的文件先拷进工作区 |
@@ -112,6 +117,7 @@ scenarios/<名称>/
 
 - 沙箱开启，命令只能写工作目录、没有网络，被拦下的命令不许退到沙箱外重试，沙箱起不来就不运行；
 - 不应答任何权限询问，工作目录内的文件编辑自动放行；
+- 放行沙箱内的 Bash 与只读的 Read：日常使用多在 `bypassPermissions` 下，含 `;`、`&&`、管道或多行脚本的复合命令不会被拦，不放行的话这类命令全被拒绝，代理连测试都跑不了（2026-10-06 首轮对照有 55 次运行受此影响）；编辑仍不放行到工作目录以外；
 - 不加载 MCP 与 skills，不保存会话；
 - 排除用户级 `~/.claude/CLAUDE.md` 及其软链目标，各组之间只差项目里的 `AGENTS.md` 与 `CLAUDE.md`（一行 `@AGENTS.md`）。
 
