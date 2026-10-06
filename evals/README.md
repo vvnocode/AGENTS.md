@@ -33,6 +33,7 @@ python3 evals/run.py --arm none --arm old=git:main --arm new=AGENTS.md --repeat 
 | `--model 名称` | 交给代理的模型，Claude Code 适配器缺省 `opus` |
 | `--budget-usd X` | 单次运行的费用上限（仅 Claude Code 适配器） |
 | `--timeout 秒` | 单次运行超时，默认 900 |
+| `--retries N`、`--retry-delay 秒` | 代理没真正开始就失败（接口报错且用量为零）时重试，默认 2 次、间隔 15 秒起逐次加长 |
 | `--agent-cmd 模板` | 接入其他工具，见「接入其他工具」 |
 | `--keep` | 保留临时工作区，便于人工查看 |
 
@@ -53,6 +54,8 @@ python3 evals/run.py --only small-change --model haiku
 不要拿 `reply-in-chinese` 判断规则是否加载：2026-10-06 的冒烟里 haiku 在英文提示词下两组都用英文回复，而带规则一组每轮确实多了约 5.3k token，是模型没有遵守语言偏好。这一条留作检查项，衡量的正是模型遵不遵守。
 
 2026-10-06 在 Claude Code 2.1.285 上实跑过这条冒烟；另在空目录里比较过带与不带 `claudeMdExcludes` 各问一句的输入，相差 5,231 token，排除生效。
+
+并发启动时，几个进程可能同时去刷新登录令牌，后到的会报「另一个进程正在刷新」而直接失败（2026-10-06 六路并发，开头 12 次运行因此作废）。运行器对这类没真正开始的运行自动重试，汇总里的 `attempts` 记下尝试次数。
 
 ## 怎么读结果
 

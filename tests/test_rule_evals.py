@@ -23,6 +23,7 @@ import subprocess
 import sys
 import tempfile
 import textwrap
+import time
 import unittest
 from pathlib import Path
 
@@ -404,6 +405,50 @@ class RuleEvalsTest(unittest.TestCase):
         self.assertRegex(report, r"\| none \|[^\n]*\| 1000 \|")
         self.assertRegex(report, r"\| rules \|[^\n]*\| 1500 \|")
 
+    @unittest.skipIf(os.name == "nt", "PATH 上的替身脚本依赖 shebang，Windows 不适用")
+    def test_run_that_never_started_is_retried(self) -> None:
+        """代理没真正开始就失败（如并发启动时抢着刷新登录令牌）的运行自动重试；一直起不来则如实记为失败。"""
+        bin_dir = self.tmp / "bin"
+        bin_dir.mkdir()
+        stub = bin_dir / "claude"
+        # 替身：计数文件记录被调用的次数；前 FAIL_FIRST 次模拟「没开始就失败」（接口报错、用量为零、退出码 1）
+        stub.write_text(textwrap.dedent(
+            f'''\
+            #!{sys.executable}
+            import json, os, pathlib, sys
+            counter = pathlib.Path(r"{bin_dir}") / "calls.txt"
+            calls = int(counter.read_text()) + 1 if counter.exists() else 1
+            counter.write_text(str(calls))
+            zero = {{"input_tokens": 0, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0}}
+            if calls <= int(os.environ["FAIL_FIRST"]):
+                print(json.dumps({{"result": "Failed to refresh OAuth token: another Claude Code process is refreshing it",
+                                  "is_error": True, "terminal_reason": "api_error", "num_turns": 0, "total_cost_usd": 0, "usage": zero}}))
+                sys.exit(1)
+            pathlib.Path("app/a.py").write_text("x = 2\\n", encoding="utf-8")
+            print(json.dumps({{"result": "done", "num_turns": 2, "total_cost_usd": 0.1,
+                              "usage": {{"input_tokens": 0, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 2000}}}}))
+            '''), encoding="utf-8")
+        stub.chmod(0o755)
+        d = self.make_scenario("flaky", [], [{"id": "did-work", "desc": "x", "kind": "changed", "paths": ["app/*"], "baseline": "fail"}])
+        (d / "prompt.md").write_text("改一下 a.py\n", encoding="utf-8")
+
+        def run(fail_first: int, *extra: str) -> dict:
+            """跑一轮并读回唯一的那条运行记录；每轮先清计数。"""
+            (bin_dir / "calls.txt").unlink(missing_ok=True)
+            cmd = [sys.executable, str(RUN_PY), "--scenarios", str(self.scenarios), "--results", str(self.results),
+                   "--arm", "none", "--retry-delay", "0", *extra]
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120,
+                                  env={**os.environ, "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}", "FAIL_FIRST": str(fail_first)})
+            self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+            return json.loads(sorted(self.results.glob("*/summary.json"))[-1].read_text(encoding="utf-8"))["runs"][0]
+
+        recovered = run(2)                       # 前两次起不来，第三次成功：默认重试 2 次正好够
+        self.assertEqual((recovered["status"], recovered["attempts"], recovered["checks"]), ("ok", 3, {"did-work": True}))
+        time.sleep(1.1)                          # 结果目录按秒命名，隔开两轮
+        gave_up = run(5, "--retries", "1")       # 一直起不来：重试 1 次后如实记失败，共尝试 2 次
+        self.assertEqual((gave_up["status"], gave_up["attempts"]), ("agent_error", 2))
+        self.assertEqual(int((bin_dir / "calls.txt").read_text()), 2)
+
     def test_claude_output_parsing(self) -> None:
         run = load_run_module()
         usage = {"input_tokens": 10, "cache_creation_input_tokens": 200, "cache_read_input_tokens": 3000}
@@ -411,6 +456,11 @@ class RuleEvalsTest(unittest.TestCase):
         self.assertEqual((ok["text"], ok["cost_usd"], ok["turns"], ok["input_tokens"]), ("完成", 0.12, 7, 3210))
         no_usage = run.parse_claude_output(json.dumps({"result": "完成"}))
         self.assertIsNone(no_usage["input_tokens"])
+        # 「没真正开始」只认报错且用量为零；跑到一半才报错（如触到预算上限）的不重试
+        zero = {"input_tokens": 0, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0}
+        self.assertTrue(run.parse_claude_output(json.dumps({"result": "x", "is_error": True, "usage": zero}))["never_started"])
+        self.assertFalse(run.parse_claude_output(json.dumps({"result": "x", "is_error": True, "usage": usage}))["never_started"])
+        self.assertFalse(ok["never_started"])
         raw = run.parse_claude_output("不是 JSON 的报错文本")
         self.assertEqual((raw["text"], raw["cost_usd"], raw["turns"], raw["input_tokens"]), ("不是 JSON 的报错文本", None, None, None))
 
