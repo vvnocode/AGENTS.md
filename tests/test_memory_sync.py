@@ -5,7 +5,7 @@
 - 只同步 cwd 落在目标仓库（根、附属 worktree、已删 worktree 路径前缀）内的线程；另一仓库的句子一字不出现
 - 一个列表项一条文件，frontmatter 与 Claude 自动记忆同形；三个标签映射 feedback / feedback / project；References 丢弃
 - 同一句子跨线程只一条；线程有 raw 块就整份不取其会话摘要（复述不进来），没有 raw 块的线程才用摘要；文件名带句子哈希，重排列表项不新增文件
-- 同步台账：删掉的同步条目不重建，之后的新增照常；没有台账的旧仓重跑只补台账；台账只存哈希；手改的条目不覆盖也不另建
+- 同步台账：删掉的同步条目不重建，之后的新增照常；没有台账的旧仓重跑只补台账；台账只存哈希、忽略非哈希行；删台账可让删掉的条目回来；手改的条目不覆盖也不另建
 - 索引段：放 MEMORY.md 末尾、用户原行不动、每条一行同形、超 60 行截断并告警；只收 frontmatter 带 source: codex 的文件，手写的同前缀条目不进段
 - 幂等：重跑字节不变；新增列表项只多一文件一索引行
 - 掩码：含 token 的句子被替换为 [已掩码]
@@ -431,6 +431,34 @@ class MemorySyncTest(unittest.TestCase):
         self.assertEqual(len(lines), len(self.codex_files()), "每条同步条目一行")
         self.assertTrue(all(re.fullmatch(r"[0-9a-f]{16}", line) for line in lines), lines)
         self.assertEqual(lines, sorted(lines), "按序写，重跑字节不变、合并冲突少")
+
+    def test_removing_ledger_brings_deleted_entries_back(self) -> None:
+        """反悔的办法：删掉台账再同步，仍在 Codex 记忆里的条目重建回来。"""
+        self.write_codex()
+        self.run_sync(self.repo_a)
+        p, _ = self.find("默认保持本地")
+        p.unlink()
+        self.run_sync(self.repo_a)
+        self.assertFalse(p.exists())
+        (self.repo_a / ".memory" / LEDGER).unlink()
+        proc = self.run_sync(self.repo_a)
+        self.assertTrue(p.exists(), "删掉台账后，被删的条目应当重建")
+        self.assertIn("新增 1 条", proc.stdout)
+
+    def test_ledger_ignores_lines_that_are_not_hashes(self) -> None:
+        """台账混进别的行（如入库仓里的合并冲突标记）：原有记录照常生效，下次写回时这些行被清掉。"""
+        self.write_codex()
+        self.run_sync(self.repo_a)
+        ledger = self.repo_a / ".memory" / LEDGER
+        ledger.write_text("<<<<<<< HEAD\n" + ledger.read_text(encoding="utf-8") + "=======\n>>>>>>> other\n", encoding="utf-8")
+        p, _ = self.find("默认保持本地")
+        p.unlink()
+        added = RAW_TEMPLATE.replace("- worktree 里 .memory 是软链。", "- worktree 里 .memory 是软链。\n- 新增句子 QQQQ。")
+        self.write_codex(raw=added)
+        self.run_sync(self.repo_a)
+        self.assertFalse(p.exists(), "冲突标记不该让原有的删除记录失效")
+        lines = self.ledger_lines()
+        self.assertTrue(all(re.fullmatch(r"[0-9a-f]{16}", line) for line in lines), lines)
 
     def test_hand_edited_entry_is_kept_and_not_duplicated(self) -> None:
         """钉住既有行为：手改同步条目的正文，重跑既不覆盖也不另建一份。"""

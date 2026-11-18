@@ -34,7 +34,7 @@ SKIP_LABELS = {"Reusable knowledge"}
 DROP_LABELS = {"References"}                     # 认识但丢弃：Codex 内部指针
 BEGIN, END = "<!-- codex-sync:begin -->", "<!-- codex-sync:end -->"
 MAX_INDEX = 60                                   # Claude 开局只读索引前 200 行，同步段必须封顶
-LEDGER = ".codex-synced"                         # 同步台账：放 .memory/ 里随记忆一起入库，换机器、重新克隆后删除仍然有效
+LEDGER = ".codex-synced"                         # 同步台账：放 .memory/ 里，.memory 入库的仓换机器、重新克隆后删除仍然有效
 LEDGER_LINE_RE = re.compile(r"[0-9a-f]{16}")     # 台账一行一个句子哈希；其余行（如合并冲突标记）读时忽略
 ASCII = os.environ.get("MEMORY_SYNC_ASCII") == "1"   # .ps1 包装设置：输出前缀改 ASCII
 DOT, WARN = ("*", "!") if ASCII else ("·", "⚠")
