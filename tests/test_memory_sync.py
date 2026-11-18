@@ -4,7 +4,8 @@
 覆盖：
 - 只同步 cwd 落在目标仓库（根、附属 worktree、已删 worktree 路径前缀）内的线程；另一仓库的句子一字不出现
 - 一个列表项一条文件，frontmatter 与 Claude 自动记忆同形；三个标签映射 feedback / feedback / project；References 丢弃
-- 同一句子跨线程只一条；线程有 raw 块就整份不取其会话摘要（复述不进来），没有 raw 块的线程才用摘要；文件名是内容哈希，重排列表项不新增文件
+- 同一句子跨线程只一条；线程有 raw 块就整份不取其会话摘要（复述不进来），没有 raw 块的线程才用摘要；文件名带句子哈希，重排列表项不新增文件
+- 同步台账：删掉的同步条目不重建，之后的新增照常；没有台账的旧仓重跑只补台账；台账只存哈希；手改的条目不覆盖也不另建
 - 索引段：放 MEMORY.md 末尾、用户原行不动、每条一行同形、超 60 行截断并告警；只收 frontmatter 带 source: codex 的文件，手写的同前缀条目不进段
 - 幂等：重跑字节不变；新增列表项只多一文件一索引行
 - 掩码：含 token 的句子被替换为 [已掩码]
@@ -28,6 +29,7 @@ SKILL = ROOT / "skills" / "agent-memory-setup"
 SYNC_PY = SKILL / "memory-sync.py"
 SYNC_SH = SKILL / "memory-sync.sh"
 GIT_CONFIG = ["-c", "user.name=test", "-c", "user.email=test@example.com", "-c", "core.autocrlf=false"]
+LEDGER = ".codex-synced"                        # 同步台账：.memory/ 下记「同步过哪些句子」的文件，与脚本里的常量同名
 
 # 仿 Codex 0.147 的 raw_memories.md：三个线程，两个属仓 A（根与 worktree），一个属仓 B
 RAW_TEMPLATE = """# Raw Memories
@@ -365,8 +367,82 @@ class MemorySyncTest(unittest.TestCase):
         self.assertEqual(len(set(after) - set(before)), 1)
         self.assertIn("QQQQ", self.index())
         self.assertIn("新增 1 条", proc.stdout)
-        unchanged = {k: v for k, v in before.items() if k != "MEMORY.md"}
+        # 索引与同步台账各多一行，其余文件字节不变
+        unchanged = {k: v for k, v in before.items() if k not in ("MEMORY.md", LEDGER)}
         self.assertEqual(unchanged, {k: v for k, v in after.items() if k in unchanged})
+        self.assertEqual(len(after[LEDGER].splitlines()), len(before[LEDGER].splitlines()) + 1, "台账只多一行")
+
+    # ── T2b：同步台账——删掉的条目不重建 ──
+    def ledger_lines(self) -> list[str]:
+        """同步台账的全部行；文件不存在时返回空列表。"""
+        p = self.repo_a / ".memory" / LEDGER
+        return p.read_text(encoding="utf-8").splitlines() if p.exists() else []
+
+    def test_deleted_entry_is_not_recreated(self) -> None:
+        """用户删掉一条同步条目：下次同步不重建、索引段不再列它、没有输出。"""
+        self.write_codex()
+        self.run_sync(self.repo_a)
+        p, _ = self.find("默认保持本地")
+        n_before = len(self.codex_files())
+        p.unlink()
+        proc = self.run_sync(self.repo_a)
+        self.assertFalse(p.exists(), "删掉的同步条目不该被重建")
+        self.assertEqual(n_before - 1, len(self.codex_files()))
+        self.assertNotIn(p.name, self.index(), "索引段应收敛到现存文件")
+        self.assertEqual(proc.stdout, "", "没有新增就不该输出")
+
+    def test_new_bullet_after_deletion_adds_only_the_new_one(self) -> None:
+        """删掉一条之后 Codex 又多出一句：只新增那一句，删掉的那条仍然不回来。"""
+        self.write_codex()
+        self.run_sync(self.repo_a)
+        p, _ = self.find("默认保持本地")
+        p.unlink()
+        added = RAW_TEMPLATE.replace("- worktree 里 .memory 是软链。", "- worktree 里 .memory 是软链。\n- 新增句子 QQQQ。")
+        self.write_codex(raw=added)
+        proc = self.run_sync(self.repo_a)
+        self.assertIn("新增 1 条", proc.stdout)
+        self.find("QQQQ")
+        self.assertFalse(p.exists(), "删掉的同步条目不该随新增一起回来")
+
+    def test_missing_ledger_is_reseeded_from_existing_files(self) -> None:
+        """升级路径：仓里已有同步条目但还没有台账，重跑只补台账、不动条目；此后删除照常生效。"""
+        self.write_codex()
+        self.run_sync(self.repo_a)
+        before = self.snapshot()
+        (self.repo_a / ".memory" / LEDGER).unlink()
+        proc = self.run_sync(self.repo_a)
+        self.assertEqual(before, self.snapshot(), "条目与索引不变，台账按现存条目补回原样")
+        self.assertEqual(proc.stdout, "")
+        p, _ = self.find("默认保持本地")
+        p.unlink()
+        self.run_sync(self.repo_a)
+        self.assertFalse(p.exists(), "补回台账之后的删除应当生效")
+
+    def test_ledger_holds_hashes_only_and_is_not_created_when_nothing_synced(self) -> None:
+        """台账只存句子哈希（存原句等于没删）；本仓没有任何可同步条目时不建台账。"""
+        only_b = "# Raw Memories\n\n## Thread `cccccccc" + RAW_TEMPLATE.split("## Thread `cccccccc")[1]
+        self.write_codex(raw=only_b, rollouts={})
+        self.run_sync(self.repo_a)
+        self.assertEqual(self.codex_files(), [])
+        self.assertFalse((self.repo_a / ".memory" / LEDGER).exists(), "没有条目就不该建台账")
+        self.write_codex()
+        self.run_sync(self.repo_a)
+        lines = self.ledger_lines()
+        self.assertEqual(len(lines), len(self.codex_files()), "每条同步条目一行")
+        self.assertTrue(all(re.fullmatch(r"[0-9a-f]{16}", line) for line in lines), lines)
+        self.assertEqual(lines, sorted(lines), "按序写，重跑字节不变、合并冲突少")
+
+    def test_hand_edited_entry_is_kept_and_not_duplicated(self) -> None:
+        """钉住既有行为：手改同步条目的正文，重跑既不覆盖也不另建一份。"""
+        self.write_codex()
+        self.run_sync(self.repo_a)
+        p, text = self.find("默认保持本地")
+        p.write_text(text.replace("默认保持本地", "默认保持本地（手改 HANDEDIT）"), encoding="utf-8")
+        n_before = len(self.codex_files())
+        proc = self.run_sync(self.repo_a)
+        self.assertIn("HANDEDIT", p.read_text(encoding="utf-8"), "手改内容不该被覆盖")
+        self.assertEqual(n_before, len(self.codex_files()), "不该按原句另建一份")
+        self.assertEqual(proc.stdout, "")
 
     def test_index_section_is_at_end_and_keeps_user_lines(self) -> None:
         self.write_codex()
