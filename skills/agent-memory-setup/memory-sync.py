@@ -5,6 +5,7 @@
 
 输入：$CODEX_HOME/memories/raw_memories.md（按线程分块）与 rollout_summaries/*.md（按会话一文件）。两者每条都带 cwd。
 输出：<仓根>/.memory/codex-<句子开头>-<hash6>.md，一个列表项一条；MEMORY.md 末尾标记段内每条一行索引（只索引 frontmatter 带 source: codex 的文件）。
+台账：<仓根>/.memory/.codex-synced 记下同步过的句子（只存哈希）。台账里有、文件已不在的句子是用户删掉的，不再重建。
 不做：不反向写 Codex 存储；不删除来源已消失的条目；不改写句子（只做凭证掩码）；
       不收 Reusable knowledge（事实结论按分工进 wiki / docs，不进 .memory）。
 另做：同步后若 .memory 已入库，用 pathspec 偏提交 .memory（RULES_NO_MEMORY_COMMIT=1 关闭）。
@@ -33,6 +34,8 @@ SKIP_LABELS = {"Reusable knowledge"}
 DROP_LABELS = {"References"}                     # 认识但丢弃：Codex 内部指针
 BEGIN, END = "<!-- codex-sync:begin -->", "<!-- codex-sync:end -->"
 MAX_INDEX = 60                                   # Claude 开局只读索引前 200 行，同步段必须封顶
+LEDGER = ".codex-synced"                         # 同步台账：放 .memory/ 里，.memory 入库的仓换机器、重新克隆后删除仍然有效
+LEDGER_LINE_RE = re.compile(r"[0-9a-f]{16}")     # 台账一行一个句子哈希；其余行（如合并冲突标记）读时忽略
 ASCII = os.environ.get("MEMORY_SYNC_ASCII") == "1"   # .ps1 包装设置：输出前缀改 ASCII
 DOT, WARN = ("*", "!") if ASCII else ("·", "⚠")
 # 凭证掩码模式：与 llm-wiki release-check.sh 同一组；Codex 自己会脱敏，这是入库前的第二道闸
@@ -263,10 +266,12 @@ def build_entries(sources: List[dict]) -> Tuple[List[dict], int, int]:
                 continue
             if key in seen:
                 continue
-            h = hashlib.sha256(key.encode("utf-8")).hexdigest()[:6]
+            digest = hashlib.sha256(key.encode("utf-8")).hexdigest()
             seen[key] = {
-                "name": f"codex-{name_slug(sentence)}-{h}", "sentence": sentence, "type": LABEL_TYPE[label],
+                "name": f"codex-{name_slug(sentence)}-{digest[:6]}", "sentence": sentence, "type": LABEL_TYPE[label],
                 "thread_id": tid, "observed_at": src["updated_at"], "description": src["description"],
+                # 台账用的句子标识：比文件名里的 6 位长，撞上别的句子会让一条新记忆被当成「删过」而静默丢掉
+                "ledger_key": digest[:16],
             }
     return list(seen.values()), masked, len(skipped - set(seen))
 
@@ -304,6 +309,22 @@ def sentences_on_disk(memory: Path) -> Dict[str, Path]:
             continue
         out[normalize(parts[2].strip().split("\n\n")[0])] = p
     return out
+
+
+def read_ledger(memory: Path) -> Set[str]:
+    """同步台账：本仓同步过的句子哈希集合；没有台账（旧版接线的仓、或从未同步过）返回空集。
+
+    台账只存哈希、不存原句：用户删条目往往就是不想让那句话留在仓里，存原句等于没删。
+    """
+    path = memory / LEDGER
+    if not path.is_file():
+        return set()
+    return {line for line in path.read_text(encoding="utf-8").split() if LEDGER_LINE_RE.fullmatch(line)}
+
+
+def write_ledger(memory: Path, keys: Set[str]) -> None:
+    """按序写回台账，一行一个哈希：重跑字节不变；.memory 入库的仓里只在集合变化时产生改动。"""
+    (memory / LEDGER).write_text("".join(k + "\n" for k in sorted(keys)), encoding="utf-8")
 
 
 def rebuild_index(memory: Path, entries: List[dict]) -> bool:
@@ -390,6 +411,8 @@ def main(argv: List[str]) -> int:
             sources.append(r)
     entries, masked, skipped = build_entries(sources)
     existing = sentences_on_disk(memory)
+    ledger = read_ledger(memory)
+    synced = set(ledger)                               # 本轮结束后的台账：旧台账 ∪ 本轮在盘上的每条来源句子
     added = renamed = 0
     for e in entries:
         path = memory / f"{e['name']}.md"
@@ -398,11 +421,16 @@ def main(argv: List[str]) -> int:
             old_path.unlink()                          # 同一句子的旧命名文件：改名，不留两份
             path.write_text(render(e), encoding="utf-8")
             renamed += 1
-            continue
-        if path.exists():
-            continue                                   # 已有同名文件即同一句子，不重写
-        path.write_text(render(e), encoding="utf-8")
-        added += 1
+        elif path.exists():
+            pass                                       # 已有同名文件即同一句子，不重写（手改过正文的也留着）
+        elif e["ledger_key"] in ledger:
+            continue                                   # 同步过、文件已不在：用户删掉的，不重建
+        else:
+            path.write_text(render(e), encoding="utf-8")
+            added += 1
+        synced.add(e["ledger_key"])                    # 走到这里文件一定在盘上；没有台账的旧仓靠这一行补齐
+    if synced != ledger:                               # 只在集合变化时写：钩子每次会话都跑，不能每次都制造改动
+        write_ledger(memory, synced)
     if masked:
         warn(f"{masked} 处疑似凭证已掩码")
     rebuild_index(memory, entries_on_disk(memory))
