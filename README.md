@@ -40,7 +40,7 @@
 |---|---|---|---|---|
 | Claude Code | `~/.claude/CLAUDE.md` | `./CLAUDE.md`；v2.1.277 起没有 `CLAUDE.md` 时直接读 `./AGENTS.md` | `~/.claude/skills/` | [Memory](https://code.claude.com/docs/en/memory) |
 | Codex | `~/.codex/AGENTS.md` | `./AGENTS.md` | `~/.codex/skills/` | [Codex manual](https://developers.openai.com/codex/codex-manual.md) |
-| Antigravity CLI（接替 Gemini CLI） | `~/.gemini/GEMINI.md` | `./GEMINI.md` 或 `./AGENTS.md` | `~/.gemini/antigravity-cli/skills/`（安装脚本未挂载） | [Gemini CLI migration](https://antigravity.google/docs/cli/gcli-migration) |
+| Antigravity CLI（接替 Gemini CLI） | `~/.gemini/GEMINI.md` | `./GEMINI.md` 或 `./AGENTS.md` | `~/.gemini/config/skills/`；CLI 另读 `~/.gemini/antigravity-cli/skills/` 与 `~/.gemini/skills/`；1.5.16 实测也扫 `~/.agents/skills/`（官方未列） | [Rules](https://antigravity.google/docs/rules)、[Skills](https://antigravity.google/docs/skills) |
 | OpenCode | `~/.config/opencode/AGENTS.md` | `./AGENTS.md` | `~/.config/opencode/skills/`，也扫 `~/.claude/skills/` 与 `~/.agents/skills/` | [Rules](https://opencode.ai/docs/en/rules/) |
 | DeepSeek Harness | `$DSH_HOME/AGENTS.md`，默认 `~/.dsh/AGENTS.md` | `./AGENTS.md` 或 `./CLAUDE.md` | `~/.agents/skills/` | [Agent instructions](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/context/agent-instructions/README.md) |
 | Cursor | 设置中的 User Rules | `./AGENTS.md` 或 `.cursor/rules/` | 待核验 | [Rules](https://cursor.com/docs/rules) |
@@ -49,7 +49,7 @@ Gemini CLI 自 2026-06-18 起对 Gemini Code Assist 个人版、Google AI Pro �
 
 “支持”表示目标工具能够读取对应入口中的 Markdown 规则，不表示不同工具会以完全相同的优先级、上下文预算或合并算法处理它。项目规则、目录级规则和组织托管规则可能覆盖本文件。
 
-「全局 Skill 发现根」列供 Skill 挂载时参考（本仓 `install.sh` 就按它把 `skills/agent-memory-setup` 挂到三处）：`~/.agents/skills/` 是跨工具约定俗成的 canonical 根，Cline、Dexto、Kimi、Warp、Zed 等只读它；Claude Code 与 Codex 不扫它、只认自己的目录。把一个 skill 软链到 `~/.agents/skills/`、`~/.claude/skills/`、`~/.codex/skills/` 三处即可覆盖上表除 Antigravity CLI 以外已核验的工具。标「待核验」的格子尚未按实物核对，不要凭印象填写。本表是这三类路径的唯一正本，其他仓库只链接、不另维护。
+「全局 Skill 发现根」列供 Skill 挂载时参考（本仓 `install.sh` 就按它把 `skills/agent-memory-setup` 挂到三处）：`~/.agents/skills/` 是跨工具约定俗成的 canonical 根，Cline、Dexto、Kimi、Warp、Zed 等只读它；Claude Code 与 Codex 不扫它、只认自己的目录。把一个 skill 软链到 `~/.agents/skills/`、`~/.claude/skills/`、`~/.codex/skills/` 三处即可覆盖上表已核验的工具；其中 Antigravity CLI 扫 `~/.agents/skills/` 是 1.5.16 的实测行为，官方文档未列，升级后要复查。标「待核验」的格子尚未按实物核对，不要凭印象填写。本表是这三类路径的唯一正本，其他仓库只链接、不另维护。
 
 ## 快速开始
 
