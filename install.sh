@@ -16,7 +16,7 @@
 # 挂载的入口（各工具官方约定，见 README 支持矩阵）：
 #   ~/.claude/CLAUDE.md                                Claude Code
 #   ~/.codex/AGENTS.md                                 Codex
-#   ~/.gemini/GEMINI.md                                Gemini CLI
+#   ~/.gemini/GEMINI.md                                Antigravity CLI（沿用 Gemini CLI 的入口）
 #   ${XDG_CONFIG_HOME:-~/.config}/opencode/AGENTS.md   OpenCode
 #   ${DSH_HOME:-~/.dsh}/AGENTS.md                      DeepSeek Harness
 # Cursor 的全局 User Rules 只能在设置界面粘贴，不在此列。
@@ -96,7 +96,7 @@ main() {
         fi
     done
     # ── 软链 skill 到三处全局 Skill 发现根 ──
-    # ~/.agents/skills 是跨工具约定俗成位（dsh、opencode、Cline 等直接读）；Claude 与 Codex 只认自己的目录、不扫它，三处缺一不可。
+    # ~/.agents/skills 是跨工具约定俗成位（dsh、opencode、Cline 等直接读，Antigravity CLI 1.5.16 实测也读、官方未列）；Claude 与 Codex 只认自己的目录、不扫它，三处缺一不可。
     # agent-memory-setup 原在 vvnocode/skills 仓，2026-09-08 并入本仓：指向旧托管位置（~/.vvnocode/skills）
     # 或更早的 XDG 位置（vvnocode-skills）的链接重指到本仓；指向别处的只告警。
     SKILL_SRC="$REPO/skills/agent-memory-setup"

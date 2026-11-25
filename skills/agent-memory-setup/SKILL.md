@@ -1,28 +1,28 @@
 ---
 name: agent-memory-setup
-description: Use when a repo is worked on by more than one coding agent (Claude Code, Codex, dsh, opencode …) and their instructions or memory sit in separate places — AGENTS.md is present but Claude ignores it, agent memory lands in the home directory, switching tools loses accumulated context, setup.sh was run but one tool still ignores the shared instructions or memory, or a new machine needs the same setup reproduced in one step.
+description: Use when a repo is worked on by more than one coding agent (Claude Code, Codex, Antigravity CLI, dsh, opencode …) and their instructions or memory sit in separate places — AGENTS.md is present but Claude ignores it, agent memory lands in the home directory, switching tools loses accumulated context, setup.sh was run but one tool still ignores the shared instructions or memory, or a new machine needs the same setup reproduced in one step.
 ---
 
 # 多 Agent 共用项目指令与仓内记忆
 
 ## 核心
 
-一份指令、一份仓库内记忆，每个工具都指向它。做法是四件事：`AGENTS.md` 当正本、`CLAUDE.md` 只放一行 `@AGENTS.md` 引用；记忆放仓内 `.memory/` 随代码提交；能改记忆目录的工具用配置指过来，不能改的让它照常写、再由 `memory-sync` 按 cwd 把属于本仓的部分同步回来；再把记忆读写规则写进 `AGENTS.md`。**各工具强度不对等**：Claude 可以用配置硬指定记忆目录；Codex 的记忆目录写死在 `$CODEX_HOME/memories`，照常开启，属于本仓的部分同步为 `.memory/` 下的普通条目（见「工具记忆同步」），它自己往 `.memory/` 写则靠指令约束；dsh 与 opencode 没有自带的跨会话记忆，全靠指令。
+一份指令、一份仓库内记忆，每个工具都指向它。做法是四件事：`AGENTS.md` 当正本、`CLAUDE.md` 只放一行 `@AGENTS.md` 引用；记忆放仓内 `.memory/` 随代码提交；能改记忆目录的工具用配置指过来，不能改的让它照常写、再由 `memory-sync` 按 cwd 把属于本仓的部分同步回来；再把记忆读写规则写进 `AGENTS.md`。**各工具强度不对等**：Claude 可以用配置硬指定记忆目录；Codex 的记忆目录写死在 `$CODEX_HOME/memories`，照常开启，属于本仓的部分同步为 `.memory/` 下的普通条目（见「工具记忆同步」），它自己往 `.memory/` 写则靠指令约束；dsh 与 opencode 没有自带的跨会话记忆，Antigravity CLI 也未观察到，全靠指令。
 
 搭建本身由 `setup.sh` / `setup.ps1` 一次做完，脚本写下什么、为什么那样写见脚本各步骤的注释；它顺带装一个 post-checkout 钩子，让之后建的每个 worktree 与根工作区效果一致（见「worktree 里效果不变」）。本 skill 的主体是脚本之后的部分：怎么验证各工具真的生效、生效不了通常卡在哪。
 
 ## 机制对照
 
-| | Claude Code | Codex | dsh | opencode |
-|---|---|---|---|---|
-| 读项目指令 | 有 `CLAUDE.md` 时只读它；v2.1.277 起仓库及上级目录没有 `CLAUDE.md` / `CLAUDE.local.md` 时才直接读 `AGENTS.md` | 只读 `AGENTS.md` | `AGENTS.md`（也认 `CLAUDE.md`） | 只读 `AGENTS.md` |
-| 自带跨会话记忆 | 有；目录可改：`autoMemoryDirectory` | 有；目录**不可改**，固定 `$CODEX_HOME/memories`，由 `memory-sync` 按 cwd 同步为仓内 `.memory/` 普通条目 | 无 | 无 |
-| 记忆读写规则来源 | 自身系统提示 + `AGENTS.md` | 仅 `AGENTS.md` | 仅 `AGENTS.md` | 仅 `AGENTS.md` |
-| 用户级指令 | `~/.claude/CLAUDE.md` | `~/.codex/AGENTS.md` | `$DSH_HOME/AGENTS.md`（默认 `~/.dsh/`） | `~/.config/opencode/AGENTS.md` |
-| 项目级配置 | `.claude/settings.local.json` | `.codex/config.toml`（**需项目被信任**） | 无 | 无需 |
-| 全局 Skill 发现根 | `~/.claude/skills/` | `~/.codex/skills/` | `~/.agents/skills/` | `~/.config/opencode/skills/`、`~/.claude/skills/`、`~/.agents/skills/` |
+| | Claude Code | Codex | Antigravity CLI | dsh | opencode |
+|---|---|---|---|---|---|
+| 读项目指令 | 有 `CLAUDE.md` 时只读它；v2.1.277 起仓库及上级目录没有 `CLAUDE.md` / `CLAUDE.local.md` 时才直接读 `AGENTS.md` | 只读 `AGENTS.md` | `AGENTS.md` 或 `GEMINI.md`，从工作目录到仓根逐级累加；不读 `CLAUDE.md` | `AGENTS.md`（也认 `CLAUDE.md`） | 只读 `AGENTS.md` |
+| 自带跨会话记忆 | 有；目录可改：`autoMemoryDirectory` | 有；目录**不可改**，固定 `$CODEX_HOME/memories`，由 `memory-sync` 按 cwd 同步为仓内 `.memory/` 普通条目 | 未观察到（1.5.16） | 无 | 无 |
+| 记忆读写规则来源 | 自身系统提示 + `AGENTS.md` | 仅 `AGENTS.md` | 仅 `AGENTS.md` | 仅 `AGENTS.md` | 仅 `AGENTS.md` |
+| 用户级指令 | `~/.claude/CLAUDE.md` | `~/.codex/AGENTS.md` | `~/.gemini/GEMINI.md` | `$DSH_HOME/AGENTS.md`（默认 `~/.dsh/`） | `~/.config/opencode/AGENTS.md` |
+| 项目级配置 | `.claude/settings.local.json` | `.codex/config.toml`（**需项目被信任**） | 无需 | 无 | 无需 |
+| 全局 Skill 发现根 | `~/.claude/skills/` | `~/.codex/skills/` | `~/.gemini/config/skills/`、`~/.gemini/antigravity-cli/skills/`、`~/.gemini/skills/`；1.5.16 实测也读 `~/.agents/skills/`（官方未列） | `~/.agents/skills/` | `~/.config/opencode/skills/`、`~/.claude/skills/`、`~/.agents/skills/` |
 
-「记忆读写规则来源」一行是关键：只有 Claude 自带「先读索引、按 frontmatter 写」的系统提示，其他三个工具只有规则文件里写了才会做。规则放在**用户级**最省事：一份跨工具规则仓软链到上表「用户级指令」四处，写一次「仓内 `.memory/` 存在时怎么读写」，所有仓库生效（参考 [vvnocode/AGENTS.md](https://github.com/vvnocode/AGENTS.md) 的「项目记忆」节）。没有全局规则的仓库才需要把规则写进仓内 `AGENTS.md`（`setup.sh --with-rule`）。
+「记忆读写规则来源」一行是关键：只有 Claude 自带「先读索引、按 frontmatter 写」的系统提示，其他工具只有规则文件里写了才会做。规则放在**用户级**最省事：一份跨工具规则仓软链到上表「用户级指令」五处，写一次「仓内 `.memory/` 存在时怎么读写」，所有仓库生效（参考 [vvnocode/AGENTS.md](https://github.com/vvnocode/AGENTS.md) 的「项目记忆」节）。没有全局规则的仓库才需要把规则写进仓内 `AGENTS.md`（`setup.sh --with-rule`）。
 
 ## 一键执行
 
@@ -45,6 +45,15 @@ powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\.agents\skills\agent-
 - Claude：在仓库目录开会话，问「不用工具，复述项目指令里关于记忆写入位置的那条」；答不出就是 `CLAUDE.md` 没加载。
 - Codex：`./codex-effective-config.py <仓库绝对路径>`（Windows：`python codex-effective-config.py <路径>`）。它走 app-server 的 `config/read` 按 cwd 解析项目层，并抓 stderr 里的未信任警告。结论行三选一：`√` 项目层已加载、`×` 该目录未被信任所以项目级 `.codex/` 整体没加载、`·` 该目录压根没有项目级 `.codex/config.toml`（打印的是全局层的值）。`memories` 的取值只作参考，别拿「三项是否为 false」当判据（Codex 自带记忆现在照常开启）。**不要用 `codex doctor`**，它只报全局值。
 - dsh / opencode：开会话问同一问题，它们读 `AGENTS.md`。
+- Antigravity CLI：同样开会话问。要看它实际注入了什么，读会话库 `~/.gemini/antigravity-cli/conversations/<会话 id>.db`（SQLite），系统提示原文在 `gen_metadata.data` 里；交互界面的 `/skills` 也按来源列出 skill。规则全文是否完整要按字节截出 `<RULE[...]>` 块体与源文件比对，`strings` 会丢中文。
+
+  ```bash
+  mkdir -p /tmp/agy && cp ~/.gemini/antigravity-cli/conversations/<id>.db* /tmp/agy/ && cd /tmp/agy   # 连同 -wal、-shm 复制，不动原库
+  sqlite3 <id>.db "select writefile('g'||idx||'.bin', data) from gen_metadata"
+  grep -a -o -h '^<RULE\[[^]]*\]>' g*.bin | sort -u                            # user_global 是全局规则，其余是项目规则的路径；锚定行首，避开会话正文里引用的同名字样
+  grep -a -o -h -E '^- [a-z0-9_-]+ \(/[^)]*SKILL\.md\)' g*.bin | sort -u      # 每个 skill 的名字与来源路径
+  ```
+
 - 记忆可见性：在 `MEMORY.md` 放一条带口令的索引行，问各工具读到几条。
 - Codex 记忆同步：`memory-sync.sh <仓根>`（Windows：`memory-sync.ps1`）后 `ls .memory/codex-*.md`，`MEMORY.md` 末尾出现 `<!-- codex-sync:begin -->` 段。无输出、无文件多半是 Codex 还没生成，见陷阱表。
 - 全局钩子：Codex 里 `/hooks` 应列出 memory-sync 且已信任；`codex exec "ok"` 启动时逐行打印 `hook: <事件>`，出现 `hook: SessionStart` 与 `Completed` 即生效（未信任的钩子不出现在这些行里）。Claude Code：`/hooks` 在 User Settings 下列出该条，`claude --debug` 的日志 `~/.claude/debug/latest` 记 `hook_execution_start`。
@@ -67,12 +76,13 @@ powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\.agents\skills\agent-
 | `.git/hooks/post-checkout` 是悬空软链（如旧版 llm-wiki bootstrap 链到后来被删除的 `scripts/hooks/post-checkout`） | setup 只告警、不写入，钩子没装；照常写入会跟随软链，在工作区建出未跟踪的钩子文件 | 确认该软链无用后删除，再重跑 setup |
 | 团队仓里接线文件未入库也未忽略（`git status` 里是 `??`） | 脚本视为待提交、不共享，只告警 | 要么提交，要么写进仓库本地的 `.git/info/exclude`（不碰团队 `.gitignore`）再建 worktree |
 | Windows 没开开发者模式、也不是管理员 | 建不了目录符号链接：`.memory`、skills 目录不共享，脚本逐项告警；`.claude` 等工具配置目录退回到只复制其下的文件（如 `.codex/config.toml`），子目录仍不共享 | 设置 → 开发者选项 → 开发者模式，或提权后重跑共享脚本。不要手工建目录联接顶上：git 2.37.3 实测 `git worktree remove` 会穿过联接删掉根工作区的内容；符号链接则安全（`git worktree remove`、`rm -rf`、`rmdir /s` 都只删链接） |
-| 规则只写在 Claude 那侧 | Codex / dsh / opencode 不知道 `.memory/` 存在，各写各的或不写 | 不能省：全局规则或 `--with-rule` 二选一 |
-| 全局规则只挂了部分工具 | 漏挂的工具（常见是 opencode 的 `~/.config/opencode/AGENTS.md`）永远读不到规则 | 按上表「用户级指令」四处逐一核对软链 |
+| 规则只写在 Claude 那侧 | Codex / Antigravity CLI / dsh / opencode 不知道 `.memory/` 存在，各写各的或不写 | 不能省：全局规则或 `--with-rule` 二选一 |
+| 规则文件超过 24,000 字节 | Antigravity CLI 按行截断单个规则文件，丢的是文件末尾；终端**不提示**，只在系统提示里留 `<truncated N bytes>`、在 `~/.gemini/antigravity-cli/cli.log` 记一行 `Rule file … truncated` 告警。全局与常驻规则合计超过 2 万 token 时，最大的文件降级为一行路径指针 | 控制规则正本体积；改大后 `grep truncated ~/.gemini/antigravity-cli/cli.log`，或按「验证」里的会话库方法比对注入全文 |
+| 全局规则只挂了部分工具 | 漏挂的工具（常见是 opencode 的 `~/.config/opencode/AGENTS.md`）永远读不到规则 | 按上表「用户级指令」五处逐一核对软链 |
 
 ## 工具记忆同步
 
-有自带记忆的工具照常写它的默认位置，不关闭；`memory-sync` 把其中属于本仓库的部分同步成 `.memory/` 下与 Claude 自动记忆**同形**的条目，任何只会读 `.memory/` 的 Agent 不必知道 Codex 的存在。目前只有 Codex 需要同步：Claude 已由 `autoMemoryDirectory` 直接写进项目，dsh 与 opencode 没有自带记忆。
+有自带记忆的工具照常写它的默认位置，不关闭；`memory-sync` 把其中属于本仓库的部分同步成 `.memory/` 下与 Claude 自动记忆**同形**的条目，任何只会读 `.memory/` 的 Agent 不必知道 Codex 的存在。目前只有 Codex 需要同步：Claude 已由 `autoMemoryDirectory` 直接写进项目，dsh 与 opencode 没有自带记忆，Antigravity CLI 也未观察到。
 
 - **来源与归属**：`$CODEX_HOME/memories/raw_memories.md`（按线程分块）与 `rollout_summaries/*.md`（按会话一文件），每条带 `cwd`；`cwd` 等于仓根、等于该仓任一现存 worktree、或位于 `<仓根>/.worktrees/`、`<仓根>/.claude/worktrees/` 之下的算本仓。
 - **粒度与格式**：Codex 的每个列表项就是一条记忆，一条一文件平铺在 `.memory/` 根下，frontmatter 只有 `name`、`description`、`metadata.type` 加溯源字段 `source: codex`、`thread_id`、`observed_at`；正文是 Codex 原句加一行来源。**只收做事方式**：`Preference signals` 与 `Failures and how to do differently` → `feedback`；`Reusable knowledge` 是事实结论，按「记忆记做事方式、结论进 wiki / docs」的分工**不落地**（原文仍在 Codex 自己的记忆里，有新增时在同步输出里报跳过条数）。`References` 与 `rollout_path` 丢弃。
